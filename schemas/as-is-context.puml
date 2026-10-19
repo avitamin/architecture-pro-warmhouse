@@ -1,0 +1,20 @@
+@startuml as-is-context
+!pragma layout smetana
+!include <C4/C4_Context>
+
+title Умный дом — As-Is\nC4 Context · система по условию проекта
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+
+Person(user, "Пользователь", "Управляет отоплением дома\nи проверяет температуру")
+System(warmhouse, "Система умного дома", "Монолитное приложение.\nУправляет отоплением и получает температуру")
+System_Ext(heating, "Модули управления отоплением", "Внешнее оборудование.\nПринимает команды управления отоплением")
+System_Ext(sensors, "Датчики температуры", "Внешнее оборудование.\nВозвращает показания по запросу сервера")
+
+Rel_D(user, warmhouse, "Управляет отоплением;\nпросматривает температуру", "Веб-интерфейс")
+Rel_D(warmhouse, heating, "Отправляет команды управления", "Синхронно; протокол не указан")
+Rel_D(warmhouse, sensors, "Запрашивает температуру;\nполучает показания в ответ", "Синхронно; протокол не указан")
+
+SHOW_LEGEND()
+@enduml
