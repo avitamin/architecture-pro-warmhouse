@@ -555,3 +555,44 @@ Locations - название комнаты, sensorId - идентификато
 - PASS: Go/JVM генерация и компиляция; повторная генерация дала одинаковые SHA256 для 83 файлов. Предметных gRPC-тестов пока нет (`NO-SOURCE` JVM).
 - PASS: существующие проверки API (127 schema examples), protoc descriptor, сборка просмотра и diff; это не runtime новых сервисов.
 - NOT RUN: этапы 2–4 — Devices, Telemetry, новые HTTP/AMQP-потоки и общая приёмка. Задание 6 целиком не завершено; риск требования ООП-языков при выбранном Go сохраняется.
+
+### Телеметрия MVP: этап 2 (2026-10-22)
+
+Добавлены Devices на Kotlin/Spring Boot и Telemetry на Go/gRPC-Go с собственными
+схемами и ролями PostgreSQL. Seed — `dev-thermostat`, дом `house-home`, владелец
+`user-1`, возможности `cap-temperature` / Cel и `cap-heating`. В этом этапе
+реализовано только чтение metadata и фоновая телеметрия; команды ещё не реализованы.
+
+Devices выдаёт действующую конфигурацию по gRPC. Telemetry независимо от HTTP
+публикует `poll.requested`, единый Go-симулятор возвращает `measurement.recorded`
+и связанный `poll.completed`, Telemetry сохраняет историю. Два новых GET-маршрута
+монолита читают Device и TelemetryPage через generated gRPC clients. Фильтры,
+keyset-пагинация и mapping Value/optional timestamps поддержаны. Старый `/sensors`
+сохранён; это первый шаг интеграции, полная миграция монолита не выполнена.
+
+[Команды запуска и проверок](apps/README.md#телеметрия-mvp-этап-2),
+[реализованный профиль и ограничения](apps/mvp-profile.md),
+[общий protobuf](docs/api/proto/warmhouse.proto).
+
+Фактические проверки этапа 2:
+
+- PASS, RED → GREEN: первый тест на работающем монолите упал с HTTP 404 при
+  health=200, затем тот же тест получил `17 Cel` через полный поток.
+- PASS: реальные публичные GetDevice/ListPollConfigurations (JVM client) и
+  ListTelemetry (Go client), включая number Value, фильтры и подписанный cursor.
+- PASS: реальные AMQP payload по существующим JSON Schema, уникальные event_id,
+  корреляция poll_job_id и measurement_event_id, сохранение исходных ns timestamps.
+- PASS: история растёт за 6,5 s без HTTP; после явного выключения scheduler
+  42 GET не меняют историю и не создают PollRequested (observer, 5 s).
+- PASS: свежий отдельный стек с `AMQP_TEMPERATURE=0`; ноль сохраняется через
+  AMQP, protobuf oneof и HTTP. Legacy Create/List/Get и переменный HTTP симулятора
+  продолжают работать; native Go tests/race/vet и JVM RPC tests выполнены.
+- NOT RUN: команды/false, общая приёмка этапа 4, recovery, физическое оборудование,
+  production security и нагрузка. Задание 6 целиком ещё не завершено.
+
+Изолированные проекты этапа 2 используют localhost-порты 18082 (17 Cel) и 18083
+(0 Cel); прежние проекты и тома сохранены. Ошибки подготовки и RED/GREEN с точными
+командами записаны в локальном `.local/task-6-stage-2-report.md`.
+Нет outbox/inbox, восстановления текущего poll после рестарта и атомарности БД+AMQP;
+ответ симулятора не доказывает работу оборудования. Риск буквального требования
+ООП-языков при выбранном Go сохраняется. Публикация не выполнялась.

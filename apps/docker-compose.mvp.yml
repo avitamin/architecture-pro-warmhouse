@@ -6,18 +6,37 @@ services:
       service: postgres
     container_name: !reset null
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    volumes:
+      - ./mvp-init.sql:/docker-entrypoint-initdb.d/mvp.sql:ro
   temperature-api:
     extends:
       file: docker-compose.yml
       service: temperature-api
     ports: !reset []
     environment:
-      # Reserved for stage 2; legacy HTTP remains variable.
+      # AMQP measurement is independent of variable legacy HTTP readings.
       AMQP_TEMPERATURE: ${AMQP_TEMPERATURE:-17}
       AMQP_URL: amqp://mvp:mvp-local@rabbitmq:5672/internal
     depends_on:
       rabbitmq:
         condition: service_healthy
+  telemetry:
+    build:
+      context: ..
+      dockerfile: apps/telemetry/Dockerfile
+    environment:
+      DATABASE_URL: postgres://telemetry:telemetry-local@postgres:5432/smarthome
+      AMQP_URL: amqp://mvp:mvp-local@rabbitmq:5672/internal
+      DEVICES_GRPC_ADDR: devices:9090
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      devices:
+        condition: service_started
+    networks: [smarthome-network]
   app:
     extends:
       file: docker-compose.yml
@@ -25,11 +44,27 @@ services:
     container_name: !reset null
     ports: !override
       - "127.0.0.1:${MVP_APP_PORT:-18081}:8080"
+    environment:
+      DEVICES_GRPC_ADDR: devices:9090
+      TELEMETRY_GRPC_ADDR: telemetry:9091
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 5s
       timeout: 3s
       retries: 12
+  devices:
+    build:
+      context: ..
+      dockerfile: apps/devices/Dockerfile
+    environment:
+      DEVICES_DATABASE_URL: jdbc:postgresql://postgres:5432/smarthome
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-2000}
+      POLL_TTL_MS: ${POLL_TTL_MS:-1000}
+      CONFIG_VALIDITY_MS: ${CONFIG_VALIDITY_MS:-300000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [smarthome-network]
   rabbitmq:
     image: rabbitmq:4.3.6-management-alpine@sha256:6e6e8952c2b56245de7ac61f06c9af9fdd38da675cd82cdbf7e3f30b33494dcc
     hostname: rabbitmq
@@ -48,8 +83,12 @@ services:
       start_period: 15s
   e2e:
     profiles: [test]
-    build: ./e2e
+    build:
+      context: ..
+      dockerfile: apps/e2e/Dockerfile
     environment:
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      EXPECTED_TEMPERATURE: ${AMQP_TEMPERATURE:-17}
       BASE_URL: http://app:8080
       TEMPERATURE_URL: http://temperature-api:8081
       AMQP_URL: amqp://mvp:mvp-local@rabbitmq:5672/internal
@@ -58,6 +97,30 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    networks: [smarthome-network]
+  devices-tests:
+    profiles: [test]
+    image: gradle:8.12.1-jdk21
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    working_dir: /workspace/apps/devices
+    environment:
+      GRADLE_USER_HOME: /workspace/apps/devices/.gradle
+      DEVICES_GRPC_ADDR: devices:9090
+    volumes:
+      - ..:/workspace
+    command: [./gradlew, --no-daemon, --max-workers=2, test]
+    networks: [smarthome-network]
+  grpc-tests:
+    profiles: [test]
+    build: ./contracts
+    working_dir: /workspace/apps/telemetry
+    environment:
+      TELEMETRY_GRPC_ADDR: telemetry:9091
+      EXPECTED_TEMPERATURE: ${AMQP_TEMPERATURE:-17}
+    volumes:
+      - ..:/workspace
+      - go_cache:/go
+    command: [go, test, -count=1, -v, ./...]
     networks: [smarthome-network]
   contracts-go:
     profiles: [tools]

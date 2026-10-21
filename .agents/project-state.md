@@ -201,3 +201,43 @@ plugins устанавливаются в `/usr/local/bin` с явным при�
 Go generation/compile/vet — PASS; SHA256 всех 83 generated files не изменились.
 Удаления кэша не потребовалось. Прикладной код и этапы 2–4 не менялись.
 Пользователь отдельно разрешил коммит этапа 1 после исправления; push/PR не выполняются.
+
+## Задание 6 — этап 2: телеметрия (2026-10-22)
+
+Исходная ветка `warmhouse`, HEAD `734179c98d05983779fe712dbe09b76129daca84`,
+дерево чистое. Весь согласованный план и отчёт этапа 1 прочитаны; четыре контейнера
+основы фактически healthy, повторный legacy PASS. Этап 3 не запускался.
+
+Реализованы [Devices](../apps/devices/src/main/kotlin/warmhouse/devices/Application.kt)
+(Kotlin 2.1.10/Spring Boot 3.4.13, Gradle wrapper 8.12.1/JDK 21),
+[Telemetry](../apps/telemetry/main.go) (Go/gRPC-Go),
+[AMQP симулятор](../apps/temperature-api/amqp.go) в существующем temperature-api и
+[два GET монолита](../apps/smart_home/handlers/devices.go). Devices хранит повторяемый
+seed в собственной схеме; Telemetry хранит историю с исходными ns timestamps в
+отдельной схеме. Роли разделены, монолит обращается к новым сервисам по gRPC.
+Общий proto не менялся; JSON payload types и минимальная topology в contracts/go/messaging.
+Go Dockerfiles генерируют bindings из общего proto внутри образа; legacy build
+не зависит от локальных generated-файлов. HTTP контракты симулятора сохранены.
+
+- PASS: первый HTTP RED (health=200, telemetry=404), затем тот же тест GREEN с 17 Cel.
+- PASS: реальные generated JVM/Go public RPC tests; seed/config, Value, фильтры, cursor.
+- PASS: реальные AMQP payload по существующим JSON Schema и корреляция событий.
+- PASS: накопление без HTTP, сохранение исходных времён, readonly GET при явно
+  выключенном scheduler (42 GET, observer PollRequested=0 за 5 s).
+- PASS: свежий isolated zero-стек, 0 через message → protobuf number oneof → HTTP;
+  legacy Create/List/Get и переменная HTTP температура сохраняются при AMQP=0.
+- PASS: native Go tests/race/vet затронутых модулей; JVM RPC test реально выполнен,
+  в том числе повторно с --rerun-tasks, не test NO-SOURCE/UP-TO-DATE.
+- NOT RUN: этапы 3–4, commands/false, recovery/нагрузка/security/оборудование.
+
+Проекты: `warmhouse-stage2-20261022` (18082, 10.246.7.0/24) и
+`warmhouse-stage2-zero-20261022` (18083, 10.246.8.0/24). Это localhost demo profile,
+не deployment acceptance. Прежние проекты/тома сохранены. У первого тестового
+stage2 volume тип двух колонок времени преобразован без удаления данных после
+обнаруженной потери ns; свежий zero volume сразу использует конечную схему.
+Встроенные migrations/recovery/outbox/inbox/команды не добавлялись.
+
+Точные команды и RED/GREEN: `.local/task-6-stage-2-report.md`, логи
+`/tmp/warmhouse-stage2-T8UthQ/`; [запуск и проверки](../apps/README.md#телеметрия-mvp-этап-2),
+[профиль](../apps/mvp-profile.md). Ничего не публиковалось и не удалялось.
+Задание 6 целиком ещё не завершено; риск требования ООП-языков при Go остаётся.

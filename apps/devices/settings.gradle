@@ -1,0 +1,4 @@
+pluginManagement { repositories { gradlePluginPortal(); mavenCentral() } }
+rootProject.name = 'devices'
+include 'contracts'
+project(':contracts').projectDir = file('../contracts/jvm')

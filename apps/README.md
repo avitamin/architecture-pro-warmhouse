@@ -176,3 +176,93 @@ docker compose --env-file .env.example logs --tail 100 app temperature-api rabbi
 
 У Node runner нет скриптов будущих этапов до появления соответствующих тестов.
 Readiness четырёх процессов и legacy smoke не подтверждают новые микросервисы.
+
+## Телеметрия MVP (этап 2)
+
+Реализован один прибор `dev-thermostat` / `house-home` / `user-1`.
+[Devices](devices/src/main/kotlin/warmhouse/devices/Application.kt) — Kotlin 2.1.10 /
+Spring Boot 3.4.13, Gradle wrapper 8.12.1 / JDK 21; registry в своей схеме `devices`.
+[Telemetry](telemetry/main.go) — Go/gRPC-Go, история в схеме `telemetry` с отдельной
+ролью. Времена событий хранятся в каноническом UTC формате с девятью дробными
+цифрами, чтобы сохранить наносекунды. Порядок этого формата хронологический.
+[Симулятор](temperature-api/amqp.go) сохраняет старый переменный HTTP и в том же
+процессе отвечает на AMQP опросы фиксированным `AMQP_TEMPERATURE` (17 по умолчанию).
+
+Новые маршруты монолита:
+
+- `GET /api/v1/devices/dev-thermostat` → Devices.GetDevice.
+- `GET /api/v1/devices/dev-thermostat/telemetry` → Telemetry.ListTelemetry.
+
+Монолит использует generated gRPC clients, не читает новые таблицы. Поддержаны
+`capability_id`, `from` включительно, `to` исключительно, `limit` (1–500, default 100)
+и подписанный keyset `cursor`. HTTP сохраняет snake_case, числовой скаляр (включая 0),
+optional presence и UTC timestamps. GET читает сохранённые данные.
+
+Свежий запуск из `apps` (имя, порт и подсеть должны быть свободны):
+
+```bash
+export COMPOSE_FILE=docker-compose.mvp.yml
+export COMPOSE_PROJECT_NAME=warmhouse-stage2-20261022
+export MVP_APP_PORT=18082
+export MVP_SUBNET=10.246.7.0/24
+export AMQP_TEMPERATURE=17
+export SCHEDULER_ENABLED=true
+docker compose --env-file .env.example config --quiet
+docker compose --env-file .env.example build app devices telemetry temperature-api e2e contracts-go
+docker compose --env-file .env.example up -d --wait --wait-timeout 120
+docker compose --env-file .env.example run --no-deps e2e npm run test:telemetry
+docker compose --env-file .env.example run --no-deps e2e npm run test:messages
+docker compose --env-file .env.example run --no-deps e2e npm run test:legacy
+# Host-generated bindings нужны для mounted native test runner:
+docker compose --env-file .env.example run --no-deps contracts-go
+docker compose --env-file .env.example run --no-deps grpc-tests
+docker compose --env-file .env.example run --no-deps devices-tests ./gradlew --no-daemon --max-workers=2 --rerun-tasks test
+```
+
+Dockerfiles Go-приложений сами генерируют Go bindings из общего proto с закреплёнными
+protoc/plugins; локальные generated-файлы исключены из build context. Build context
+монолита и симулятора в legacy Compose теперь также корень репозитория; `init.sh`
+сохраняет возможность сборки без host codegen. JVM contracts — общий Gradle subproject.
+Порты gRPC 9090/9091, PostgreSQL, RabbitMQ и симулятора остаются внутри Compose-сети.
+`up --wait` для процессов без healthcheck подтверждает только running; готовность
+новых RPC подтверждают отдельные реальные boundary tests выше.
+
+Для `0` использован отдельный свежий проект `warmhouse-stage2-zero-20261022`,
+`MVP_APP_PORT=18083`, `MVP_SUBNET=10.246.8.0/24`, `AMQP_TEMPERATURE=0`.
+Те же тесты получают expected value из runner env, а Go boundary test отдельно
+проверяет присутствующий `Value.number_value=0`. Старый HTTP симулятора при этом
+продолжает менять температуру. Не меняйте значения на старом томе ради проверки
+нового seed и не удаляйте тома; выбирайте новое имя проекта.
+
+Проверка отсутствия опроса из GET выполняется **на уже заполненной истории**:
+
+```bash
+SCHEDULER_ENABLED=false docker compose --env-file .env.example up -d --no-deps telemetry
+SCHEDULER_ENABLED=false docker compose --env-file .env.example run --no-deps e2e npm run test:telemetry:readonly
+SCHEDULER_ENABLED=true docker compose --env-file .env.example up -d --no-deps telemetry
+```
+
+Проверяйте фактический env telemetry через `docker inspect`: scheduler должен быть
+выключен, а gRPC чтение доступно. Observer подписывается до GET, использует свою
+очередь и не конкурирует с приложением. Проверка делает 42 GET и наблюдает ещё 5 s,
+более двух периодов при стандартном `POLL_INTERVAL_MS=2000`.
+Фоновое накопление проверяется отдельным интервалом 6,5 s без HTTP; тесты этого
+профиля рассчитаны на стандартные interval=2000 / TTL=1000 ms. В Devices эти параметры
+и `CONFIG_VALIDITY_MS` (default 300000) конфигурируемы. Не увеличивайте их при запуске
+этих проверок без соответствующего изменения тестового временного бюджета.
+
+Native Go tests/vet (на запущенном Compose, через `grpc-tests` с теми же mounts/env):
+
+```bash
+docker compose --env-file .env.example run --no-deps grpc-tests sh -c 'go test -race -count=1 -v ./... && go vet ./... && cd /workspace/apps/temperature-api && go test -race -count=1 ./... && go vet ./... && cd /workspace/apps/smart_home && go test ./... && go vet ./... && cd /workspace/apps/contracts/go && go test ./... && go vet ./...'
+```
+
+Для отдельно воспроизводимого существующего simulator test suite из repo root:
+`docker build -f apps/temperature-api/Dockerfile.mvp -t warmhouse-stage2-simulator-tests .`,
+затем `docker run warmhouse-stage2-simulator-tests`. Native Telemetry tests требуют
+работающего настоящего сервиса; отсутствие стека — ошибка, а не skip.
+
+Ограничения: [MVP profile](mvp-profile.md). Нет commands, outbox/inbox, надёжного
+recovery, auth/TLS и физического оборудования. Поток успешного опроса не доказывает
+доставку при сбоях; рестарт с выключенным scheduler здесь служит только проверкой
+чтения сохранённой истории. Этапы 3–4 ещё не выполнялись.

@@ -1,0 +1,7 @@
+.git
+.local
+.idea
+**/node_modules
+**/.gradle
+**/build
+apps/contracts/go/gen

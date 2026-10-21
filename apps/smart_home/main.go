@@ -14,6 +14,9 @@ import (
 	"smarthome/services"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	pb "warmhouse/contracts/gen/warmhouse/v1"
 )
 
 func main() {
@@ -49,6 +52,19 @@ func main() {
 	sensorHandler := handlers.NewSensorHandler(database, temperatureService)
 	sensorHandler.RegisterRoutes(apiRoutes)
 
+	if address := os.Getenv("DEVICES_GRPC_ADDR"); address != "" {
+		devicesConn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer devicesConn.Close()
+		telemetryConn, err := grpc.NewClient(getEnv("TELEMETRY_GRPC_ADDR", "telemetry:9091"), grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer telemetryConn.Close()
+		handlers.RegisterDevices(apiRoutes, pb.NewDevicesServiceClient(devicesConn), pb.NewTelemetryServiceClient(telemetryConn))
+	}
 	// Start server
 	srv := &http.Server{
 		Addr:    getEnv("PORT", ":8080"),

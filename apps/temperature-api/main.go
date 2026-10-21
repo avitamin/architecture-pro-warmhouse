@@ -108,6 +108,14 @@ func main() {
 	server := &http.Server{Addr: ":8081", Handler: newTemperatureAPI(), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if os.Getenv("AMQP_URL") != "" {
+		go func() {
+			if err := runPolls(ctx); err != nil {
+				log.Printf("AMQP: %v", err)
+				stop()
+			}
+		}()
+	}
 	go func() {
 		log.Printf("Temperature API listening on %s", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

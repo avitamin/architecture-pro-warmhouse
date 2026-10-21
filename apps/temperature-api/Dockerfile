@@ -1,12 +1,20 @@
-FROM golang:1.25.4-alpine3.22 AS builder
-WORKDIR /src
-COPY go.mod ./
-COPY *.go ./
-RUN CGO_ENABLED=0 go build -trimpath -o /temperature-api .
-
+FROM golang:1.25.4-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler=3.21.12-3+deb12u1 libprotobuf-dev=3.21.12-3+deb12u1
+ENV GOBIN=/usr/local/bin
+ENV PATH="/usr/local/bin:${PATH}"
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5 && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+COPY docs/api/proto /workspace/docs/api/proto
+COPY apps/contracts/go /workspace/apps/contracts/go
+COPY apps/contracts/generate-go.sh /workspace/apps/contracts/generate-go.sh
+WORKDIR /workspace/apps/contracts/go
+RUN sh ../generate-go.sh
+WORKDIR /workspace/apps/temperature-api
+COPY apps/temperature-api .
+RUN go mod download && CGO_ENABLED=0 go build -mod=readonly -trimpath -o /service .
 FROM alpine:3.22
+RUN apk --no-cache add ca-certificates tzdata
+WORKDIR /app
+COPY --from=build /service /usr/local/bin/temperature-api
 RUN addgroup -S temperature && adduser -S -G temperature temperature
-COPY --from=builder /temperature-api /usr/local/bin/temperature-api
 USER temperature
-EXPOSE 8081
 CMD ["temperature-api"]

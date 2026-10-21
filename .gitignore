@@ -7,3 +7,5 @@
 /apps/contracts/go/gen/
 /apps/contracts/jvm/.gradle/
 /apps/contracts/jvm/build/
+/apps/devices/.gradle/
+/apps/devices/build/

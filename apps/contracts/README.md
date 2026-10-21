@@ -2,8 +2,8 @@
 
 Единственный исходник: [warmhouse.proto](../../docs/api/proto/warmhouse.proto).
 Java protobuf и gRPC stubs доступны Kotlin/JVM без ручных DTO. Это генерация
-контрактов всех RPC, а не реализация серверов. Сервис Devices и его Gradle wrapper
-относятся к этапу 2; для текущей компиляции используется закреплённый Gradle image.
+контрактов всех RPC, а не реализация всех серверов. Devices и его Gradle wrapper
+находятся в `../devices`; JVM contracts подключаются как Gradle subproject.
 
 Из `apps` (Compose v2.24.4+):
 
@@ -18,7 +18,8 @@ protobuf runtime 1.36.5, grpc-go 1.70.0. JVM: Gradle 8.12.1/JDK 21,
 protobuf Gradle plugin 0.9.4, protoc/runtime 3.25.5, grpc-java 1.70.0.
 Версии компиляторов языков могут различаться, номера/смысл полей едины.
 Генерация Go также создаёт descriptor set и выполняет native `go test`/`go vet`;
-Gradle выполняет `generateProto compileJava test`. Предметных RPC-тестов пока нет.
+Gradle выполняет `generateProto compileJava test`. Предметные boundary tests
+Devices и Telemetry запускаются отдельно на реальных сервисах — см. [apps README](../README.md#телеметрия-mvp-этап-2).
 
 Выходы ignored: `go/gen`, `jvm/build`, `jvm/.gradle`. `go/go.sum` и Gradle
 lockfile фиксируют зависимости. После осознанного изменения версий:
@@ -31,3 +32,10 @@ Go-плагины установлены в `/usr/local/bin`, вне тома `/
 
 Официальные инструкции: [Go codegen](https://grpc.io/docs/languages/go/quickstart/),
 [JVM plugin и dependencies](https://github.com/grpc/grpc-java/blob/v1.70.0/README.md).
+
+Go JSON-типы трёх telemetry-сообщений и минимальная AMQP topology находятся в
+`go/messaging`; источник ограничений payload — прежний `docs/api/schemas.json`.
+Это wire types, не второй источник protobuf. Dockerfiles Go-приложений генерируют
+bindings внутри сборки; `.dockerignore` исключает локальный `go/gen`. Поэтому
+legacy `init.sh` и сборка из чистого checkout не зависят от host codegen.
+Для host `go test` перед запуском по-прежнему нужна команда contracts-go выше.

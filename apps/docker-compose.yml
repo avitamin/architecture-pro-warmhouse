@@ -20,7 +20,8 @@ services:
 
   temperature-api:
     build:
-      context: ./temperature-api
+      context: ..
+      dockerfile: apps/temperature-api/Dockerfile
     ports:
       - "${TEMPERATURE_API_PORT:-8081}:8081"
     networks:
@@ -34,8 +35,8 @@ services:
 
   app:
     build:
-      context: ./smart_home
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: apps/smart_home/Dockerfile
     container_name: smarthome-app
     depends_on:
       postgres:
