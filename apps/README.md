@@ -266,3 +266,45 @@ docker compose --env-file .env.example run --no-deps grpc-tests sh -c 'go test -
 recovery, auth/TLS и физического оборудования. Поток успешного опроса не доказывает
 доставку при сбоях; рестарт с выключенным scheduler здесь служит только проверкой
 чтения сохранённой истории. Этапы 3–4 ещё не выполнялись.
+
+
+## Ручные команды MVP: этап 3
+
+Реализованы `POST /api/v1/devices/{device_id}/commands` и
+`GET /api/v1/devices/{device_id}/commands/{command_id}` в монолите через
+SubmitManualCommand/GetCommand Devices. Body POST — CommandInput из
+[контрактов](../docs/api/grpc.md), ответ — Command без обёртки:
+новый запрос получает 202, Location и accepted; GET достигает succeeded только
+после результата операции симулятора. Поля user_id/source в body запрещены;
+Devices задаёт демонстрационного пользователя и manual. Это не авторизация.
+
+Проверенный отдельный проект этапа 3 использует порт 18084 и подсеть 10.246.9.0/24;
+прежние стеки остаются нетронутыми. Команды из `apps`:
+
+```bash
+export MVP_APP_PORT=18084 MVP_SUBNET=10.246.9.0/24
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 build devices app temperature-api telemetry e2e grpc-tests
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 up -d --no-build --wait --wait-timeout 60
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 run --no-deps e2e npm run test:commands
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 run --no-deps e2e npm run test:messages
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 run --no-deps devices-tests ./gradlew --no-daemon --max-workers=2 --rerun-tasks test
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 run --no-deps grpc-tests
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 run --no-deps e2e npm run test:telemetry
+docker compose --env-file .env.example -f docker-compose.mvp.yml -p warmhouse-stage3-20261022 run --no-deps e2e npm run test:legacy
+```
+
+Перед повторным запуском убедитесь, что порт/подсеть принадлежат именно вашему
+проекту. Тесты команд запускать последовательно: они управляют одним каналом.
+`test:commands` проверяет включение и отдельное выключение с новым command_id,
+202/Location, succeeded и внутренний diagnostic enabled/last_command_id.
+`test:messages` валидирует реальные CommandRequested/CommandStateChanged и
+сообщения телеметрии по действующим JSON Schema с date-time и связями ID.
+Observer подписан до отправки и использует свою очередь. JVM-тест дополнительно
+проверяет присутствие Boolean oneof для true/false и optional counters.
+
+Сохранённые значения `false`, sequence, cancel boundary, сроки/config и result_version
+проверены на реальных границах. HTTP timestamps сохраняют ns; counters — строки.
+Начальный HTTP RED был 404 вместо 202; тот же тест стал GREEN.
+Ограничения доставки и симулятора перечислены в [MVP-профиле](mvp-profile.md).
+Нет outbox/inbox/recovery/Scenarios/auth/TLS. Диагностический API не опубликован
+на host и не является Devices API. Общая приёмка этапа 4 ещё не выполнялась.

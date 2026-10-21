@@ -67,7 +67,7 @@ func Topology(ch *amqp.Channel) error {
 			return err
 		}
 	}
-	for _, binding := range [][3]string{{"wh.poll.requests", "poll.requested", "wh.jobs.v1"}, {"wh.telemetry.measurements", "measurement.recorded", "wh.events.v1"}, {"wh.telemetry.poll-results", "poll.completed", "wh.events.v1"}} {
+	for _, binding := range [][3]string{{"wh.command.requests", "command.requested", "wh.jobs.v1"}, {"wh.devices.command-results", "command.state_changed", "wh.events.v1"}, {"wh.poll.requests", "poll.requested", "wh.jobs.v1"}, {"wh.telemetry.measurements", "measurement.recorded", "wh.events.v1"}, {"wh.telemetry.poll-results", "poll.completed", "wh.events.v1"}} {
 		if _, err := ch.QueueDeclare(binding[0], true, false, false, false, nil); err != nil {
 			return err
 		}

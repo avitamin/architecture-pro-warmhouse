@@ -45,6 +45,10 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 }
 
 func (api *temperatureAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/diagnostics/heating" && os.Getenv("AMQP_URL") != "" {
+		heatingState(w, r)
+		return
+	}
 	path := r.URL.Path
 	byLocation := path == "/temperature"
 	byID := strings.HasPrefix(path, "/temperature/") && len(path) > len("/temperature/") && !strings.Contains(strings.TrimPrefix(path, "/temperature/"), "/")
@@ -109,6 +113,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if os.Getenv("AMQP_URL") != "" {
+		go func() {
+			if err := runCommands(ctx); err != nil {
+				log.Printf("AMQP commands: %v", err)
+				stop()
+			}
+		}()
 		go func() {
 			if err := runPolls(ctx); err != nil {
 				log.Printf("AMQP: %v", err)

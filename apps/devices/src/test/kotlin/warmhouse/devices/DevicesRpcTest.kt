@@ -53,10 +53,10 @@ class DevicesRpcTest {
                 stub.getDevice(GetDeviceRequest.newBuilder().setDeviceId("missing").build())
             }
             assertEquals(Status.Code.NOT_FOUND, missing.status.code)
-            val unsupported = assertThrows(StatusRuntimeException::class.java) {
+            val missingCommand = assertThrows(StatusRuntimeException::class.java) {
                 stub.getCommand(GetCommandRequest.getDefaultInstance())
             }
-            assertEquals(Status.Code.UNIMPLEMENTED, unsupported.status.code)
+            assertEquals(Status.Code.NOT_FOUND, missingCommand.status.code)
         } finally { channel.shutdownNow().awaitTermination(5, TimeUnit.SECONDS) }
     }
 }

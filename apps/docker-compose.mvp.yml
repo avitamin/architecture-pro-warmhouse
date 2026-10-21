@@ -57,11 +57,15 @@ services:
       context: ..
       dockerfile: apps/devices/Dockerfile
     environment:
+      AMQP_URL: amqp://mvp:mvp-local@rabbitmq:5672/internal
+      DEMO_USER_ID: user-1
       DEVICES_DATABASE_URL: jdbc:postgresql://postgres:5432/smarthome
       POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-2000}
       POLL_TTL_MS: ${POLL_TTL_MS:-1000}
       CONFIG_VALIDITY_MS: ${CONFIG_VALIDITY_MS:-300000}
     depends_on:
+      rabbitmq:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     networks: [smarthome-network]

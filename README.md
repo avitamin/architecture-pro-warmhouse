@@ -596,3 +596,24 @@ keyset-пагинация и mapping Value/optional timestamps поддержа�
 Нет outbox/inbox, восстановления текущего poll после рестарта и атомарности БД+AMQP;
 ответ симулятора не доказывает работу оборудования. Риск буквального требования
 ООП-языков при выбранном Go сохраняется. Публикация не выполнялась.
+
+
+### Ручные команды MVP: этап 3 (2026-10-22)
+
+[Два маршрута команд](apps/README.md#ручные-команды-mvp-этап-3) монолита используют
+Devices gRPC. Devices сохраняет accepted, acceptance_seq, границу ручной отмены,
+срок и конфигурацию; публикует CommandRequested. Единый Go-симулятор выполняет set,
+сохраняет enabled/last_command_id в памяти и отправляет CommandStateChanged;
+после применения результата Devices GET показывает succeeded. Подтверждение
+публикации брокером само по себе не означает исполнения.
+
+- PASS: HTTP RED до реализации (404 вместо 202), затем GREEN того же теста.
+- PASS: включение и отдельное выключение с новым ID, 202/Location, succeeded,
+  совпадающий ID и true/false диагностического состояния симулятора.
+- PASS: реальные AMQP payload по действующим схемам, обязательные версии/поля,
+  sequence/manual_cancel_before_seq, сроки/config и корреляция результата.
+- PASS: public gRPC, Boolean oneof true/false, HTTP scalar mapping и optional counters;
+  регрессия telemetry/legacy и native Go tests/vet.
+- NOT RUN: общая приёмка этапа 4, recovery/outbox/inbox, Scenarios, production security,
+  нагрузка и физическое оборудование. Задание 6 целиком ещё не завершено;
+  риск буквального требования ООП-языков при Go сохраняется.

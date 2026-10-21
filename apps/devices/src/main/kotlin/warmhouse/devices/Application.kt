@@ -25,7 +25,7 @@ fun main(args: Array<String>) {
 }
 
 @Component
-class DevicesRpc(private val jdbc: JdbcTemplate) : DevicesServiceGrpc.DevicesServiceImplBase(), SmartLifecycle {
+class DevicesRpc(private val jdbc: JdbcTemplate, private val commands: CommandsRpc) : DevicesServiceGrpc.DevicesServiceImplBase(), SmartLifecycle {
     private var server: Server? = null
     private val log = LoggerFactory.getLogger(javaClass)
     private val interval = (System.getenv("POLL_INTERVAL_MS") ?: "2000").toInt().also { require(it > 0) }
@@ -56,8 +56,10 @@ class DevicesRpc(private val jdbc: JdbcTemplate) : DevicesServiceGrpc.DevicesSer
         response.onCompleted()
         log.info("poll configuration issued device_id={}", id)
     }
+    override fun submitManualCommand(request: SubmitManualCommandRequest, response: StreamObserver<SubmitCommandResponse>) = commands.submitManualCommand(request, response)
+    override fun getCommand(request: GetCommandRequest, response: StreamObserver<Command>) = commands.getCommand(request, response)
     fun awaitTermination() { server!!.awaitTermination() }
-    override fun start() { server = ServerBuilder.forPort(9090).addService(this).build().start() }
-    override fun stop() { server?.shutdown()?.awaitTermination(5, TimeUnit.SECONDS); server = null }
+    override fun start() { commands.start(); server = ServerBuilder.forPort(9090).addService(this).build().start() }
+    override fun stop() { commands.stop(); server?.shutdown()?.awaitTermination(5, TimeUnit.SECONDS); server = null }
     override fun isRunning() = server != null
 }

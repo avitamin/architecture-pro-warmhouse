@@ -241,3 +241,42 @@ stage2 volume тип двух колонок времени преобразов
 `/tmp/warmhouse-stage2-T8UthQ/`; [запуск и проверки](../apps/README.md#телеметрия-mvp-этап-2),
 [профиль](../apps/mvp-profile.md). Ничего не публиковалось и не удалялось.
 Задание 6 целиком ещё не завершено; риск требования ООП-языков при Go остаётся.
+
+## Задание 6 — этап 3: ручные команды (2026-10-22)
+
+Исходная ветка `warmhouse`, HEAD `1de9eb86186a94705ed265600068b81dacab9802`,
+дерево чистое. План и отчёты этапов 1–2 сверены с текущими исходниками.
+Реализованы только ручные команды: два HTTP-маршрута монолита → generated
+Devices gRPC → CommandRequested в RabbitMQ → операция единого Go-симулятора →
+CommandStateChanged → обновление Devices → GET команды.
+
+Devices сохраняет accepted, acceptance_seq, равный ему manual_cancel_before_seq,
+expires_at и конфигурацию в своей схеме. Первоначальный Submit возвращает
+неизменный accepted без result_version; конечный результат имеет succeeded,
+result_version=1/reason_code=COMPLETED и evidence=operation_completed в событии.
+user_id/source задаёт сервер. Публикация с confirm не считается исполнением.
+Внутренний diagnostic `/diagnostics/heating` симулятора показывает enabled и
+last_command_id; host-порт не публикуется. Состояние отопления только в памяти.
+
+- PASS: первый e2e написан/запущен до реализации, RED POST 404 вместо 202;
+  тот же тест GREEN после реализации.
+- PASS: включение и отдельное выключение с новым ID, 202/Location, succeeded,
+  enabled=true/false и точный command_id диагностики.
+- PASS: runtime AMQP по неизменённым schemas, schema_version/config_version,
+  result_version, обязательные поля, сроки, config и связи ID.
+- PASS: JVM public RPC tests 2/2, явный BOOLEAN_VALUE для true/false;
+  optional presence/counters и неперезаписанный первоначальный accepted.
+- PASS: telemetry HTTP/AMQP/background 5/5, Go RPC/race/vet, legacy 3/3;
+  native Go tests/race/vet симулятора и compile/vet монолита/contracts.
+- NOT RUN: этап 4/test:all, recovery/outbox/inbox, Scenarios, auth/TLS,
+  нагрузка и физическое оборудование. Задание 6 целиком ещё не завершено.
+
+Изолированный проект `warmhouse-stage3-20261022`, localhost API 18084,
+подсеть 10.246.9.0/24; прежние проекты/тома сохранены. Логи
+`/tmp/warmhouse-stage3-LoytxR`, точные команды и аудит — `.local/task-6-stage-3-report.md`.
+[Запуск и проверки](../apps/README.md#ручные-команды-mvp-этап-3),
+[ограничения](../apps/mvp-profile.md). Нет атомарности PostgreSQL+AMQP,
+восстановления потерянной публикации/команд и обработки повторной доставки.
+Невалидный command останавливает simulator AMQP; ошибка результата отменяет
+consumer Devices без ACK. Это happy-path demo без quarantine/retry.
+Commit/push/PR, этап 4 и удаление файлов/томов не выполнялись.

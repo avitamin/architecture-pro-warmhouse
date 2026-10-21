@@ -1,12 +1,12 @@
 import amqp from 'amqplib';
 import assert from 'node:assert/strict';
 
-export async function observe() {
+export async function observe(bindings = [['wh.jobs.v1', 'poll.requested'], ['wh.events.v1', 'measurement.recorded'], ['wh.events.v1', 'poll.completed']]) {
   const connection = await amqp.connect(process.env.AMQP_URL, {timeout: 5000});
   const channel = await connection.createChannel();
   const events = [];
   const {queue} = await channel.assertQueue('', {exclusive: true, autoDelete: true});
-  for (const [exchange, key] of [['wh.jobs.v1', 'poll.requested'], ['wh.events.v1', 'measurement.recorded'], ['wh.events.v1', 'poll.completed']]) {
+  for (const [exchange, key] of bindings) {
     await channel.bindQueue(queue, exchange, key);
   }
   await channel.consume(queue, delivery => {

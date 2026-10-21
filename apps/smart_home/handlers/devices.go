@@ -19,6 +19,9 @@ func rpcError(c *gin.Context, err error) {
 	httpCode := http.StatusInternalServerError
 	publicCode := "INTERNAL"
 	switch code {
+	case codes.AlreadyExists:
+		httpCode = 409
+		publicCode = "CONFLICT"
 	case codes.NotFound:
 		httpCode = 404
 		publicCode = "NOT_FOUND"
@@ -35,6 +38,7 @@ func rpcError(c *gin.Context, err error) {
 	c.JSON(httpCode, gin.H{"code": publicCode, "message": status.Convert(err).Message(), "retryable": code == codes.Unavailable || code == codes.DeadlineExceeded, "request_id": msg.ID()})
 }
 func RegisterDevices(api *gin.RouterGroup, devices pb.DevicesServiceClient, telemetry pb.TelemetryServiceClient) {
+	registerCommands(api, devices)
 	api.GET("/devices/:device_id", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 		defer cancel()
