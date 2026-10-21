@@ -132,3 +132,47 @@ readiness. Actual verification results are recorded in the root README, assignme
 - `PUT /api/v1/sensors/:id` - Update a sensor
 - `DELETE /api/v1/sensors/:id` - Delete a sensor
 - `PATCH /api/v1/sensors/:id/value` - Update a sensor's value and status
+
+## Локальная основа MVP (этап 1)
+
+[Демонстрационный профиль и границы](mvp-profile.md),
+[генерация Go/JVM](contracts/README.md). Compose v2.24.4+ необходим для `!override`;
+локально используется v2.29.1. Это отдельная конфигурация, не override legacy-файла.
+Существующий стек задания 5 и его том сохраняются.
+
+Из `apps`:
+
+```bash
+export COMPOSE_PROJECT_NAME=warmhouse-stage1-20261022
+export COMPOSE_FILE=docker-compose.mvp.yml
+# Для нового изолированного запуска выберите другое уникальное имя проекта.
+docker compose --env-file .env.example config --quiet
+docker compose --env-file .env.example build app temperature-api e2e contracts-go
+docker compose --env-file .env.example up -d --wait --wait-timeout 180
+docker compose --env-file .env.example --profile test run e2e npm run test:legacy
+docker compose --env-file .env.example run --no-deps contracts-go
+docker compose --env-file .env.example run --no-deps contracts-jvm
+```
+
+API: `http://127.0.0.1:18081`, порт настраивается `MVP_APP_PORT`.
+Симулятор, БД и RabbitMQ не публикуются на host. `MVP_SUBNET` по умолчанию
+`10.246.6.0/24`: перед новым запуском проверьте отсутствие пересечения с Docker/VPN;
+если подсеть занята, укажите свободную. Это обходит исчерпанный автоматический
+пул Docker без удаления сетей. Фиксированных container_name в MVP нет.
+В `internal` используется учебная пара `mvp` / `mvp-local`, без TLS.
+`POSTGRES_PASSWORD` обязателен; `.env.example` содержит только учебное значение.
+
+Runner создаёт датчик с уникальным именем, выполняет Create → пять List → Get
+и проверяет активный статус, диапазон/шаг, новые значения и свежие времена;
+проверяет оба HTTP-маршрута симулятора и реальное AMQP-соединение.
+Запросы ограничены 5 секундами, тесты — конечным deadline.
+Удаление созданного датчика и cleanup не выполняются. Каждый `run` оставляет
+контейнер для диагностики; `--rm` не используется. Для просмотра:
+
+```bash
+docker compose --env-file .env.example ps -a
+docker compose --env-file .env.example logs --tail 100 app temperature-api rabbitmq
+```
+
+У Node runner нет скриптов будущих этапов до появления соответствующих тестов.
+Readiness четырёх процессов и legacy smoke не подтверждают новые микросервисы.

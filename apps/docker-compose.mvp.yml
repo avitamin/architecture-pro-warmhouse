@@ -1,0 +1,91 @@
+# Standalone local demonstration configuration; do not merge with the legacy file.
+services:
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+    container_name: !reset null
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+  temperature-api:
+    extends:
+      file: docker-compose.yml
+      service: temperature-api
+    ports: !reset []
+    environment:
+      # Reserved for stage 2; legacy HTTP remains variable.
+      AMQP_TEMPERATURE: ${AMQP_TEMPERATURE:-17}
+      AMQP_URL: amqp://mvp:mvp-local@rabbitmq:5672/internal
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+  app:
+    extends:
+      file: docker-compose.yml
+      service: app
+    container_name: !reset null
+    ports: !override
+      - "127.0.0.1:${MVP_APP_PORT:-18081}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  rabbitmq:
+    image: rabbitmq:4.3.6-management-alpine@sha256:6e6e8952c2b56245de7ac61f06c9af9fdd38da675cd82cdbf7e3f30b33494dcc
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: mvp
+      RABBITMQ_DEFAULT_PASS: mvp-local
+      RABBITMQ_DEFAULT_VHOST: internal
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks: [smarthome-network]
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
+  e2e:
+    profiles: [test]
+    build: ./e2e
+    environment:
+      BASE_URL: http://app:8080
+      TEMPERATURE_URL: http://temperature-api:8081
+      AMQP_URL: amqp://mvp:mvp-local@rabbitmq:5672/internal
+    depends_on:
+      app:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks: [smarthome-network]
+  contracts-go:
+    profiles: [tools]
+    build: ./contracts
+    working_dir: /workspace/apps/contracts/go
+    volumes:
+      - ..:/workspace
+      - go_cache:/go
+    command: [sh, ../generate-go.sh]
+    network_mode: bridge
+  contracts-jvm:
+    profiles: [tools]
+    image: gradle:8.12.1-jdk21
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    working_dir: /workspace/apps/contracts/jvm
+    environment:
+      GRADLE_USER_HOME: /workspace/apps/contracts/jvm/.gradle
+    volumes:
+      - ..:/workspace
+    command: [gradle, --no-daemon, generateProto, compileJava, test]
+    network_mode: bridge
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  go_cache:
+networks:
+  smarthome-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${MVP_SUBNET:-10.246.6.0/24}

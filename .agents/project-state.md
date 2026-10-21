@@ -165,3 +165,39 @@ Dockerfile, init.sh и Postman-коллекцией. Исторический As
 Проверки Go и Docker выполнены с разрешённым расширенным доступом после ограничений
 песочницы. Первоначальные ошибки окружения (Go-кэш, неподдерживаемый `start --wait`,
 исчерпание пула сетей) устранены для проверок; исходный код монолита не менялся.
+
+## Задание 6 — только этап 1 (2026-10-22)
+
+Исходный checkout реализации: `warmhouse`, HEAD `c1ed74416c31adf380c40cf53ceb72abdcf626b5`,
+чистое дерево; задание 5 уже закоммичено, в отличие от более старого снимка плана.
+Сверены Compose, SQL, Dockerfiles, код/тесты temperature-api, legacy handlers/client,
+proto и правила документации. Существующие Go-код, тесты, SQL и init.sh сохранены.
+
+Добавлены [MVP Compose](../apps/docker-compose.mvp.yml),
+[профиль](../apps/mvp-profile.md), [Node runner](../apps/e2e/package.json),
+[Go/JVM codegen](../apps/contracts/README.md). В proto добавлены только language options;
+field numbers и семантика не менялись. В Dockerfile монолита закреплены Go 1.25.4 /
+Alpine 3.22; legacy Compose и init.sh сохранены. MVP наследует сервисы legacy-файла,
+сбрасывает фиксированные container_name и host ports и публикует только localhost HTTP.
+
+- PASS: config обоих Compose; сборка app, temperature-api, e2e, contracts-go.
+- PASS: новый проект `warmhouse-stage1-20261022`, подсеть `10.246.6.0/24`, новые PostgreSQL/RabbitMQ volumes; четыре процесса healthy, HTTP `127.0.0.1:18081`. Стек задания 5 оставлен работающим.
+- PASS: Node runner — 3 теста, реальный Create/List/Get, два маршрута симулятора, Ajv time, AMQP internal. Датчик ID 1: 20,7 / 15 / 15,9 / 21,1 / 25,8 °C; по ID 23,7 °C.
+- PASS: сохранённые Go tests/vet, protobuf Go/JVM compile, повторная генерация — 83 одинаковых SHA256. JVM `test NO-SOURCE`, Go contracts не содержит предметных тестов.
+- PASS: API check (127 examples), host protoc, сборка просмотра; ссылочная проверка и diff.
+- NOT RUN: этапы 2–4, новые RPC/маршруты/AMQP handlers; готовность предметных потоков не заявлена.
+
+Известные ошибки подготовки исправлены: недоступный Debian pin protoc заменён на
+`3.21.12-3+deb12u1`; зависимости docs/api установлены для существующего check.
+Вызовы Docker/host Go и запись состояния требуют расширенного доступа в текущей песочнице.
+Оставлены контейнеры runner/codegen, кэши и артефакты; ничего не очищалось.
+Подробный локальный отчёт: `.local/task-6-stage-1-report.md`, runtime-логи:
+`/tmp/warmhouse-stage1-D06Qcn/`. Это датированный снимок, перед новым использованием
+проверять состояние Docker заново. Commit/push/PR не выполнялись.
+
+Дополнение 2026-10-22: исправлено перекрытие Go codegen plugins сохраняемым `/go`:
+plugins устанавливаются в `/usr/local/bin` с явным приоритетом PATH. Повторная
+сборка и проверка `command -v`/версий обоих plugins на существующем go_cache,
+Go generation/compile/vet — PASS; SHA256 всех 83 generated files не изменились.
+Удаления кэша не потребовалось. Прикладной код и этапы 2–4 не менялись.
+Пользователь отдельно разрешил коммит этапа 1 после исправления; push/PR не выполняются.
