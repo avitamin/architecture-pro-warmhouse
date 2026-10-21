@@ -1,0 +1,105 @@
+@startuml to-be-containers
+!pragma layout smetana
+!include <C4/C4_Container>
+LAYOUT_TOP_DOWN()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 50
+skinparam ranksep 90
+title
+Умный дом — To-Be
+C4 Containers · приложения и независимо запускаемые роли
+end title
+
+Person(user, "Пользователь", "Владелец устройств")
+System_Ext(equipment, "MQTT-устройства", "Исходящее подключение к платформе")
+System_Ext(camera, "Совместимая камера", "WebRTC и доступная сигнализация партнёра")
+System_Boundary(platform, "Платформа умного дома") {
+  Container(web, "Веб-приложение", "Браузер", "Показания, управление, правила, live-видео")
+  Container(edge, "API Gateway", "PHP / Laravel; HTTP ↔ gRPC", "Проверка сессии через Users; маршрутизация запросов и ответов")
+  Container(users, "Users API", "C# / ASP.NET Core gRPC", "Сессии; выпуск и обмен подписанного пользовательского токена")
+  Boundary(devices, "Devices · Kotlin / Spring Boot · своя схема PG") {
+    Container(dapi, "Devices API", "gRPC/TLS", "Реестр, привязка, права, приём команд")
+    Container(dresults, "Результаты команд", "AMQP worker", "Атомарное применение версии")
+    Container(drelay, "Devices relay", "Outbox process", "Задания команд")
+  }
+  Boundary(telemetry, "Telemetry · Go / gRPC-Go · своя схема PG") {
+    Container(tapi, "Telemetry API", "gRPC/TLS", "История и временные отметки")
+    Container(tplan, "Планирование и сверка", "Фоновые роли", "Конфигурация, расписание, зависшие опросы")
+    Container(thistory, "История", "AMQP worker", "Сохранение измерений")
+    Container(tresults, "Результаты опросов", "AMQP worker", "Inbox, завершение и расписание")
+    Container(trelay, "Telemetry relay", "Outbox process", "Задания опросов")
+  }
+  Boundary(scenarios, "Scenarios · Python / gRPC Python · своя схема PG") {
+    Container(sapi, "Scenarios API", "gRPC/TLS", "Правила и версии")
+    Container(srules, "Обработка правил", "AMQP worker", "Inbox, состояние, срабатывания")
+    Container(srelay, "Scenarios relay", "Outbox process / gRPC", "Команды с постоянным command_id")
+  }
+  Container(video, "Video API", "TypeScript / NestJS gRPC", "Доступ и live-сеанс; клиент сигнализации; без медиабайтов")
+  Boundary(integration, "Integration Gateway · Elixir/OTP · общая кодовая база · своя схема PG") {
+    Container(gapi, "Gateway API", "gRPC/TLS", "Сверка заданий; адаптация сигнализации")
+    Container(ginput, "Приёмники", "AMQP workers", "Команды internal; сырые ответы devices → PostgreSQL")
+    Container(gpoll, "Пул опросов", "Worker processes", "Опрос; ACK задания после итога")
+    Container(gcommand, "Пул команд", "Worker processes", "Ожидание и координация устройства")
+    Container(grecovery, "Восстановление", "Фоновая роль", "Lease; неизвестный исход")
+    Container(grelay, "Gateway relay", "Outbox process", "Проверенные измерения и результаты")
+  }
+  Boundary(broker, "Один экземпляр RabbitMQ · общие ресурсы и область отказа") {
+    ContainerQueue(internal, "vhost internal", "RabbitMQ / AMQP", "Раздельные задания и результаты; независимые подписки измерений")
+    ContainerQueue(raw, "vhost devices", "MQTT plugin / AMQP", "Каналы приборов; общая очередь сырых ответов")
+  }
+  ContainerDb(pg, "Одна общая БД", "PostgreSQL", "Отдельные схемы/роли Devices, Telemetry, Users, Scenarios, Gateway; без чужого SQL")
+  ContainerDb(cache, "Кэш положительных прав", "Продукт не выбран", "user + device + action; TTL; Devices — единственный писатель")
+  Container(turn, "TURN / функции STUN", "WebRTC infrastructure", "Резервная ретрансляция; STUN не передаёт видео")
+}
+Rel(user, web, "Управляет и просматривает")
+BiRel(web, edge, "Пользовательские запросы и ответы, включая телеметрию", "HTTPS / JSON")
+Rel(edge, users, "Сессия → токен для получателя", "gRPC/TLS")
+Rel(edge, dapi, "Реестр и команды", "gRPC/TLS")
+BiRel(edge, tapi, "Показания / история и ответ", "gRPC/TLS")
+Rel(edge, sapi, "Правила", "gRPC/TLS")
+Rel(edge, video, "Просмотр / сигнализация клиента", "gRPC/TLS")
+Rel(tapi, cache, "Чтение разрешения")
+Rel(video, cache, "Чтение разрешения")
+Rel(sapi, cache, "Чтение разрешения")
+Rel(dapi, cache, "Запись / отзыв разрешений")
+Rel(tplan, dapi, "Конфигурация устройств", "gRPC/TLS")
+Rel(tplan, gapi, "Сверка / повторная публикация", "gRPC/TLS")
+Rel(srelay, dapi, "Команды сценариев", "gRPC/TLS")
+BiRel(telemetry, internal, "Опросы →; ← измерения, итоги", "AMQP")
+BiRel(devices, internal, "Команды →; ← результаты", "AMQP")
+Rel(internal, srules, "Независимая подписка измерений", "AMQP")
+BiRel(integration, internal, "← задания; измерения и итоги →", "AMQP")
+BiRel(integration, raw, "MQTT → / AMQP ←", "Сырые ответы: общая очередь")
+BiRel(equipment, raw, "Прибор инициирует соединение; запросы и ответы", "MQTT 5 / TLS")
+Rel(integration, dapi, "Подтверждение привязки", "Контракт доставки уточняется")
+BiRel(video, gapi, "Параметры видеосеанса", "gRPC/TLS")
+BiRel(gapi, camera, "Сигнализация", "Существующий протокол партнёра; транспорт уточняется")
+Rel(camera, web, "Предпочтительный медиапоток", "WebRTC")
+Rel(camera, turn, "Резервный медиапуть", "WebRTC / TURN")
+Rel(turn, web, "Ретрансляция медиапотока", "WebRTC / TURN")
+Rel(users, pg, "Схема Users", "SQL")
+Rel(devices, pg, "Своя схема", "SQL")
+Rel(telemetry, pg, "Своя схема", "SQL")
+Rel(scenarios, pg, "Своя схема", "SQL")
+Rel(integration, pg, "Своя схема", "SQL")
+note bottom of pg
+  Связи от границ суммируют SQL/AMQP ролей; детали — на Components.
+  SQL каждой роли — только к своей схеме.
+  Сырые ответы из общей очереди devices читают AMQP-приёмники шлюза.
+  Пользовательские API Telemetry, Scenarios, Video при miss/отказе кэша вызывают Devices,
+  предварительно обменивая контекст в Users на токен для Devices.
+  Фон Scenarios: кэш либо Devices по служебному контракту и сохранённому владельцу;
+  обмен браузерного контекста в фоне не используется.
+  Роли не означают число реплик. Video: постоянное хранилище не выбрано.
+  Синхронные gRPC: TLS и отдельные служебные токены направленных связей.
+  Фоновая автоматизация не хранит браузерный токен.
+  OTel / Collector / Prometheus / Loki: отдельный эксплуатационный срез
+  to-be-containers-observability; охватывает все роли и инфраструктуру.
+end note
+
+SHOW_LEGEND()
+footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+@enduml

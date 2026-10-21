@@ -1,0 +1,71 @@
+@startuml to-be-code-gateway-coordinator
+!pragma layout smetana
+left to right direction
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam wrapWidth 170
+skinparam nodesep 35
+skinparam ranksep 65
+hide empty members
+hide circle
+skinparam classBackgroundColor #EAF3FF
+title Умный дом — To-Be · C4 Code · Integration Gateway / координатор · Elixir/OTP
+class "Gateway.CommandWorker" as worker <<внешний OTP worker>> #EEEEEE
+class "Gateway.CommandReceiver" as intake <<внешний AMQP consumer>> #EEEEEE
+class "Gateway.RecoveryWorker" as recovery <<внешний OTP worker>> #EEEEEE
+class "Gateway.ReplyReceiver" as replies <<внешний AMQP consumer>> #EEEEEE
+class "Gateway.DeviceCoordinator" as coord <<Elixir module>> {
+ +reserve(command_id, worker)
+ +take_recovery_right(device_id)
+ +record_unknown(right)
+ +finish(right, evidence)
+ +apply_manual_priority(command)
+}
+class "Gateway.CoordinationStore" as store <<SQL module>> {
+ +with_device_lock(device_id, operation)
+ +commit_state_version_outbox(...)
+ +check_current_right(right)
+}
+class "Gateway.ExecutionRight" as right <<Elixir struct>> {
+ device_id; active_command_id
+ owner; ownership_version; lease
+}
+class "Gateway.CompletionEvidence" as evidence <<Elixir struct>> {
+ command_id; correlated_reply
+ outcome; late_action_excluded
+}
+class "Gateway.PartnerAdapter" as adapter <<внешний adapter module>> #EEEEEE
+worker --> coord : резервирование / условное завершение
+intake --> coord : ручной приоритет и граница отмены
+recovery --> coord : право выяснения / сохранение исхода
+coord --> store : короткая TX; строка устройства FOR UPDATE
+store ..> right : проверяет владельца и версию
+coord ..> evidence : проверяет допустимость завершения
+worker --> adapter : отправка только после commit резервирования
+recovery --> adapter : выяснение конкретной операции
+replies ..> evidence : долговечный коррелированный ответ\nне право завершить команду
+note bottom of coord
+  Просроченные / отменённые ожидающие команды завершаются без отправки.
+  Ручной приоритет отменяет старые pending auto той же возможности;
+  reserved/executing не прерываются. Неизвестный исход не обходится.
+  Истечение lease сохраняет занятость; старое право завершения отвергается.
+  Восстановление: исход + отсутствие позднего действия доказаны →
+  итог / версия / outbox и допустимое освобождение в одной TX.
+  Иначе сохраняются неопределённость и занятость; нужен разбор.
+end note
+note bottom of store
+  Приём команды: долговечная запись → commit → ACK до исполнения.
+  Сырой ответ: запись с корреляцией → commit → ACK; это ещё не итог.
+  PostgreSQL — источник состояния; GenServer/Supervisor его не заменяют.
+  Сеть вне TX. Перезапуск OTP не разрешает слепой повтор команды.
+  Пулы команд и опросов запускаются отдельно; общий код адаптеров.
+  Опрос имеет свою границу ACK после commit итога и outbox.
+  OTel: резервирование / отправка / неизвестность / восстановление.
+end note
+
+legend bottom
+Проектируемые элементы; реализации нет. Голубые — внутри компонента; серые — соседи.
+Сплошная стрелка — вызов / зависимость; пунктир — использование данных или связь с соседним компонентом.
+endlegend
+@enduml

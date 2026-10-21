@@ -1,0 +1,250 @@
+syntax = "proto3";
+package warmhouse.v1;
+
+option go_package = "warmhouse/contracts/gen/warmhouse/v1;warmhousev1";
+option java_package = "warmhouse.v1";
+option java_multiple_files = true;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// Проектируемые интерфейсы; серверного кода нет.
+// Все RPC: TLS + authorization: Bearer <pair-service-token>.
+// Пользовательские RPC дополнительно требуют x-user-context для этого audience.
+// Обязательность, проверки и HTTP mapping: ../contracts.md и ../grpc.md.
+service UsersService {
+  rpc ValidateSession(ValidateSessionRequest) returns (UserContext);
+  rpc ExchangeContext(ExchangeContextRequest) returns (UserContext);
+}
+service DevicesService {
+  rpc GetDevice(GetDeviceRequest) returns (Device);
+  rpc ListPollConfigurations(ListPollConfigurationsRequest) returns (PollConfigurationPage);
+  rpc CheckAccess(CheckAccessRequest) returns (AccessDecision);
+  rpc CheckSavedOwnerAccess(CheckSavedOwnerAccessRequest) returns (AccessDecision);
+  rpc SubmitManualCommand(SubmitManualCommandRequest) returns (SubmitCommandResponse);
+  rpc SubmitScenarioCommand(SubmitScenarioCommandRequest) returns (SubmitCommandResponse);
+  rpc GetCommand(GetCommandRequest) returns (Command);
+}
+service TelemetryService {
+  rpc ListTelemetry(ListTelemetryRequest) returns (TelemetryPage);
+}
+service ScenariosService {
+  rpc CreateRule(CreateRuleRequest) returns (Rule);
+  rpc GetRule(GetRuleRequest) returns (Rule);
+  rpc UpdateRule(UpdateRuleRequest) returns (Rule);
+  rpc ListTriggers(ListTriggersRequest) returns (TriggerPage);
+}
+service IntegrationGatewayService {
+  rpc GetPollJob(GetPollJobRequest) returns (PollJobState);
+  rpc RepublishPollResult(RepublishPollResultRequest) returns (RepublishPollResultResponse);
+}
+
+message Value {
+  oneof value {
+    double number_value = 1; // Только конечные числа.
+    bool boolean_value = 2;
+    string text_value = 3;
+  }
+}
+message Parameters {
+  string operation = 1;
+  map<string, Value> arguments = 2;
+}
+message PageRequest {
+  uint32 limit = 1; // 0 = 100; иначе 1..500.
+  string cursor = 2; // Пусто только на первой странице.
+}
+message ValidateSessionRequest {
+  string session_cookie = 1; // Только API Gateway; не логировать.
+  string audience = 2; // devices, telemetry или scenarios.
+  optional string csrf_token = 3;
+  bool require_csrf = 4; // true для POST/PUT, Gateway определяет по маршруту.
+}
+message ExchangeContextRequest {
+  string subject_token = 1; // Токен с audience вызывающего сервиса.
+  string audience = 2; // В этом срезе только devices.
+}
+message UserContext {
+  string user_id = 1;
+  string token = 2; // Подписанный непрозрачный для Gateway контекст.
+  string audience = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+message GetDeviceRequest { string device_id = 1; }
+message Capability {
+  string id = 1;
+  string code = 2;
+  string kind = 3; // measurement | control | live_video.
+  optional string value_type = 4; // number | boolean | text; обязательно для measurement.
+  optional string unit = 5;
+  google.protobuf.Struct parameters_schema = 6; // JSON Schema draft-07; обязательно для control.
+}
+message Device {
+  string id = 1;
+  string house_id = 2;
+  string type_id = 3;
+  string name = 4;
+  string registration_status = 5; // Только bound в пользовательском API этого среза.
+  repeated Capability capabilities = 6;
+}
+message ConfigSnapshot {
+  string device_id = 1;
+  string capability_id = 2;
+  int32 config_version = 3;
+  string adapter_key = 4;
+  string endpoint_key = 5; // Непрозрачный ключ зарегистрированного endpoint, не URL и не секрет.
+  string channel = 6;
+  google.protobuf.Timestamp issued_at = 7;
+  google.protobuf.Timestamp valid_until = 8;
+  optional string value_type = 9;
+  optional string unit = 10;
+}
+message ListPollConfigurationsRequest { PageRequest page = 1; }
+message PollConfiguration {
+  ConfigSnapshot config = 1;
+  int32 poll_interval_ms = 2;
+  int32 poll_ttl_ms = 3;
+}
+message PollConfigurationPage {
+  repeated PollConfiguration items = 1;
+  string next_cursor = 2;
+}
+message CheckAccessRequest {
+  string device_id = 1;
+  string action = 2; // read_device | read_telemetry | control | configure_rule.
+}
+message CheckSavedOwnerAccessRequest {
+  string user_id = 1; // Только Scenarios, из сохранённого правила.
+  string device_id = 2;
+  string action = 3;
+}
+message AccessDecision {
+  bool allowed = 1;
+  optional google.protobuf.Timestamp valid_until = 2; // Только положительный результат.
+}
+message CommandInput {
+  string command_id = 1;
+  string capability_id = 2;
+  Parameters parameters = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+message SubmitManualCommandRequest {
+  string device_id = 1;
+  CommandInput command = 2;
+}
+message SubmitScenarioCommandRequest {
+  string device_id = 1;
+  CommandInput command = 2;
+  string owner_user_id = 3;
+  string rule_id = 4;
+  int32 rule_version = 5;
+  string trigger_id = 6;
+  string causation_event_id = 7;
+}
+message SubmitCommandResponse {
+  Command command = 1;
+  bool replayed = 2; // true -> HTTP 200, false -> 202. Только принятые запросы.
+}
+message GetCommandRequest {
+  string device_id = 1;
+  string command_id = 2;
+}
+message Command {
+  string command_id = 1;
+  string device_id = 2;
+  string capability_id = 3;
+  string user_id = 4;
+  string source = 5; // manual | scenario; выставляет Devices по RPC/caller.
+  Parameters parameters = 6;
+  google.protobuf.Timestamp expires_at = 7;
+  google.protobuf.Timestamp created_at = 8;
+  string status = 9; // CommandStatus из schemas.json.
+  optional uint64 acceptance_seq = 10;
+  optional uint64 result_version = 11;
+  google.protobuf.Timestamp state_changed_at = 12;
+  optional string reason_code = 13;
+  optional string rule_id = 14;
+  optional int32 rule_version = 15;
+  optional string trigger_id = 16;
+}
+message ListTelemetryRequest {
+  string device_id = 1;
+  optional string capability_id = 2;
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+  PageRequest page = 5;
+}
+message Measurement {
+  string id = 1;
+  string event_id = 2;
+  string device_id = 3;
+  string capability_id = 4;
+  Value value = 5;
+  google.protobuf.Timestamp measured_at = 6;
+  google.protobuf.Timestamp gateway_received_at = 7;
+  optional string unit = 8;
+}
+message TelemetryPage {
+  repeated Measurement items = 1;
+  string next_cursor = 2;
+}
+message RuleInput {
+  string name = 1;
+  bool enabled = 2;
+  string input_device_id = 3;
+  string input_capability_id = 4;
+  string operator = 5; // lt | lte | eq | neq | gte | gt.
+  Value threshold = 6;
+  int32 max_data_age_ms = 7;
+  string target_device_id = 8;
+  string target_capability_id = 9;
+  Parameters action_parameters = 10;
+  int32 command_ttl_ms = 11;
+}
+message CreateRuleRequest { RuleInput rule = 1; }
+message GetRuleRequest { string rule_id = 1; }
+message UpdateRuleRequest {
+  string rule_id = 1;
+  int32 expected_version = 2;
+  RuleInput rule = 3;
+}
+message Rule {
+  RuleInput configuration = 1;
+  string id = 2;
+  string owner_user_id = 3;
+  int32 version = 4;
+  google.protobuf.Timestamp activated_at = 5;
+  bool initial_evaluated = 6;
+  optional bool last_condition_met = 7;
+  Value last_value = 8;
+  google.protobuf.Timestamp last_measured_at = 9;
+}
+message ListTriggersRequest {
+  string rule_id = 1;
+  PageRequest page = 2;
+}
+message Trigger {
+  string id = 1;
+  string rule_id = 2;
+  int32 rule_version = 3;
+  string event_id = 4;
+  google.protobuf.Timestamp triggered_at = 5;
+  string command_id = 6;
+}
+message TriggerPage {
+  repeated Trigger items = 1;
+  string next_cursor = 2;
+}
+message GetPollJobRequest { string poll_job_id = 1; }
+message PollJobState {
+  string poll_job_id = 1;
+  string state = 2; // pending | running | completed; NOT_FOUND отдельно.
+  optional string result_event_id = 3; // Только completed.
+  optional string outcome = 4; // PollCompleted.outcome, только completed.
+}
+message RepublishPollResultRequest { string poll_job_id = 1; }
+message RepublishPollResultResponse {
+  string poll_job_id = 1;
+  string result_event_id = 2;
+  bool publication_scheduled = 3; // true после commit outbox, не delivery guarantee.
+}

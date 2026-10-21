@@ -1,0 +1,8 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Сообщения — AsyncAPI</title><link rel="stylesheet" href="assets/asyncapi.css"></head>
+<body><div id="asyncapi"></div><script src="assets/asyncapi.js"></script><script>
+const apps=['telemetry','devices','scenarios','integration-gateway'];
+const selected=new URLSearchParams(location.search).get('app') || 'telemetry';
+if(apps.includes(selected)) {
+ AsyncApiStandalone.render({schema:{url:selected+'.json'},config:{show:{sidebar:true}}},document.getElementById('asyncapi'));
+} else {document.getElementById('asyncapi').textContent='Неизвестное приложение';}
+</script></body></html>

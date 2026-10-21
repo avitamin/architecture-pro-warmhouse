@@ -1,0 +1,42 @@
+@startuml to-be-containers-observability
+!pragma layout smetana
+!include <C4/C4_Container>
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 170
+skinparam nodesep 35
+skinparam ranksep 60
+LAYOUT_LEFT_RIGHT()
+title Умный дом — To-Be · C4 Containers · наблюдаемость
+Person(engineer, "Разработчик / оператор", "Чтение диагностики")
+System_Ext(agent, "Агент-разработчик", "API / CLI; ограниченные запросы")
+System_Boundary(platform, "Платформа умного дома · эксплуатационный срез") {
+ Container(apps, "Все шесть сервисов + API Gateway", "Сводный узел ролей из to-be-containers", "OTel trace context; метрики; структурированные stdout/stderr-логи")
+ Container(infra, "PostgreSQL / RabbitMQ / кэш / TURN / среда", "Сводный узел инфраструктуры", "Собственные метрики и логи; поддерживаемые exporters")
+ Container(collector, "OpenTelemetry Collector", "Дистрибутив и версия уточняются", "Приём, обработка и экспорт; ограниченные буферы; собственная диагностика")
+ ContainerDb(prom, "Prometheus", "Собственное хранилище метрик", "PromQL; retention и ресурсы уточняются")
+ ContainerDb(loki, "Loki", "Хранилище логов", "LogQL; физическое хранение и режим уточняются")
+ ContainerDb(traces, "Хранилище трасс · открытый выбор", "Продукт НЕ выбран", "Обязательное требование; Tempo — только кандидат")
+}
+Rel(apps, collector, "Трассы; сбор логов окружением; метрики", "Пути доставки каждого сигнала уточняются")
+Rel(infra, collector, "Показатели / логи через готовые интеграции", "Exporters / receivers уточняются")
+Rel(collector, prom, "Доставка метрик", "Pull / push ещё не выбран")
+Rel(collector, loki, "Доставка логов", "Настройка экспорта уточняется")
+Rel(collector, traces, "Экспорт трасс", "Контракт зависит от хранилища")
+Rel(agent, prom, "Читает метрики", "HTTP API / promtool")
+Rel(agent, loki, "Читает логи", "HTTP API / LogCLI")
+Rel(agent, traces, "Читает трассы", "Интерфейс ещё не выбран")
+Rel(engineer, prom, "Диагностика метрик")
+Rel(engineer, loki, "Диагностика логов")
+Rel(engineer, traces, "Читает трассы", "Интерфейс ещё не выбран")
+note bottom of collector
+  Сводные узлы не являются дополнительными приложениями.
+  Сборщик не хранит доступную для поиска историю приложения.
+  command_id / trace_id — поля, не метки метрик / индекса Loki.
+  Недоступность экспорта не меняет commit/ACK и исход команды.
+  Grafana и MCP-интерфейс ещё не выбраны; доступ требует настройки.
+end note
+SHOW_LEGEND()
+
+footer Проектируемая архитектура · код сервисов не реализован · детали контрактов уточняются
+@enduml

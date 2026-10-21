@@ -1,2 +1,11 @@
 .DS_Store
 /.idea/
+/.local/
+/apps/.env
+
+/apps/e2e/node_modules/
+/apps/contracts/go/gen/
+/apps/contracts/jvm/.gradle/
+/apps/contracts/jvm/build/
+/apps/devices/.gradle/
+/apps/devices/build/

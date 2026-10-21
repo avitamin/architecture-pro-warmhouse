@@ -1,0 +1,54 @@
+@startuml to-be-components-video
+!pragma layout smetana
+!include <C4/C4_Component>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 35
+skinparam ranksep 65
+title
+Умный дом — To-Be
+C4 Components · сервис видеонаблюдения
+end title
+
+Container(web, "Веб-приложение", "Браузер / WebRTC", "Управление просмотром; приём медиапотока")
+Container(edge, "API Gateway", "HTTPS JSON ↔ gRPC/TLS", "Пользовательский API, включая организацию сеанса")
+Container(users, "Users", "gRPC/TLS", "Обмен контекста для Devices")
+Container(devices, "Devices", "gRPC/TLS", "Реестр камер и источник прав")
+ContainerDb(cache, "Общий кэш прав", "Read-only для Video", "Положительные разрешения с TTL")
+Container(gateway, "Gateway API и адаптер камеры", "gRPC/TLS", "Существующий протокол сигнализации партнёра")
+System_Ext(camera, "Совместимая камера", "WebRTC, совместимый кодек и доступная сигнализация")
+Container(turn, "TURN / STUN", "Инфраструктура", "TURN ретранслирует; STUN помогает установить соединение")
+Boundary(service, "Video · TypeScript / NestJS gRPC") {
+  Container_Boundary(api, "Video API") {
+    Component(entry, "API просмотра", "gRPC handlers", "Контекст пользователя и служебная аутентификация")
+    Component(access, "Проверка доступа к камере", "Authorization client", "Кэш либо Devices; запрет обхода по одному camera_id")
+    Component(session, "Управление live-сеансом", "Доменный компонент", "Состояние и жизненный цикл; постоянное хранилище не выбрано")
+    Component(signaling, "Клиент сигнализации", "gRPC client", "Параметры соединения; партнёрская адаптация в шлюзе")
+  }
+}
+BiRel(web, edge, "Запросы / ответы управления просмотром", "HTTPS / JSON")
+BiRel(edge, entry, "Управление сеансом", "gRPC/TLS")
+Rel(entry, access, "Проверить контекст и право")
+Rel(access, cache, "Читает без продления TTL")
+Rel(access, users, "Обмен токена для Devices при необходимости", "gRPC/TLS")
+Rel(access, devices, "Проверка при miss / отказе кэша", "gRPC/TLS")
+Rel(entry, session, "Разрешённый просмотр")
+BiRel(session, signaling, "Параметры сеанса")
+BiRel(signaling, gateway, "Сигнализация", "gRPC/TLS")
+BiRel(gateway, camera, "Сигнализация", "Протокол партнёра; транспорт уточняется")
+Rel(camera, web, "Прямой медиапоток", "WebRTC")
+Rel(camera, turn, "Резервный медиапуть", "WebRTC / TURN")
+Rel(turn, web, "Ретрансляция", "WebRTC / TURN")
+note bottom of session
+  Без записи, архива и медиабайтов в Video / Gateway / RabbitMQ.
+  Выдача доступа к TURN, отзыв активного просмотра,
+  доставка изменений сигнализации браузеру и восстановление
+  сеанса требуют детализации. TURN не преобразует RTSP в WebRTC.
+end note
+
+SHOW_LEGEND()
+footer Проектируемая архитектура · хранилище Video не выбрано · все роли: OTel, метрики и структурированные логи
+@enduml

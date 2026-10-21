@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Умный дом — API</title>
+  <style>
+    body { margin: 0; font: 16px system-ui, sans-serif; color: #15253b; background: #f6f8fb; }
+    header { padding: 24px 32px; background: #15253b; color: white; }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    p { margin: 8px 0; }
+    nav { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 16px 32px; }
+    a, select { font: inherit; padding: 8px; }
+    iframe { width: 100%; height: 80vh; border: 0; background: white; }
+    a { color: #1559a6; }
+  </style>
+</head>
+<body>
+<header><h1>Телеметрия, управление и автоматизация</h1><p>Проектируемые API v1 · OpenAPI, gRPC и AsyncAPI · backend не развёрнут</p></header>
+<nav aria-label="Документация">
+  <a href="http.html" target="docs">HTTP / Swagger UI</a>
+  <label for="app">AsyncAPI:</label>
+  <select id="app"><option value="telemetry">Telemetry</option><option value="devices">Devices</option><option value="scenarios">Scenarios</option><option value="integration-gateway">Integration Gateway</option></select>
+  <a id="async-link" href="async.html?app=telemetry" target="docs">Открыть сообщения</a>
+</nav>
+<iframe name="docs" title="Интерактивная документация API" src="http.html"></iframe>
+<script>document.getElementById('app').addEventListener('change', e => {document.getElementById('async-link').href = 'async.html?app=' + encodeURIComponent(e.target.value);});</script>
+</body>
+</html>

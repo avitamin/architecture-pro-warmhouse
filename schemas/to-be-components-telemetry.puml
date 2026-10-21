@@ -1,0 +1,72 @@
+@startuml to-be-components-telemetry
+!pragma layout smetana
+!include <C4/C4_Component>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 35
+skinparam ranksep 65
+title
+Умный дом — To-Be
+C4 Components · сервис телеметрии
+end title
+
+Container(edge, "API Gateway", "HTTPS JSON ↔ gRPC/TLS", "Единственный пользовательский вход; ответ возвращается через него")
+Container(users, "Users", "gRPC/TLS", "Обмен токена для Devices")
+Container(devices, "Devices", "gRPC/TLS", "Конфигурация и источник прав")
+Container(gateway, "Gateway API", "gRPC/TLS", "Состояние опроса / повторная публикация")
+ContainerDb(cache, "Общий кэш прав", "Read-only для Telemetry", "Положительное разрешение с действующим TTL")
+ContainerQueue(broker, "RabbitMQ internal", "AMQP", "Отдельно: задания, измерения, результаты опросов")
+Boundary(service, "Telemetry · Go / gRPC-Go") {
+  Container_Boundary(api, "Telemetry API") {
+    Component(access, "Проверка контекста и доступа", "gRPC middleware / client", "Сессия проверена Gateway; токен проверяется здесь; кэш или Devices")
+    Component(query, "Чтение истории и показаний", "Query component", "Сохранённые значения и временные отметки; без опроса прибора в запросе экрана")
+  }
+  Container_Boundary(planning, "Роли планирования и сверки") {
+    Component(config, "Получение конфигурации", "gRPC client", "Локальная восстанавливаемая конфигурация")
+    Component(scheduler, "Планировщик", "Background worker", "SKIP LOCKED; одно активное задание на прибор; интервалы не накапливаются")
+    Component(reconcile, "Сверка зависших опросов", "Background worker", "Ограниченные порции; паузы; сигнал оператору")
+  }
+  Container_Boundary(historyrole, "Worker истории") {
+    Component(history, "Сохранение измерений", "AMQP consumer", "Повторы учитываются; поздние корректные показания остаются в истории")
+  }
+  Container_Boundary(resultrole, "Worker результатов опросов") {
+    Component(results, "Inbox и завершение задания", "AMQP consumer", "event_id + активный poll_job_id; итог, занятость, backoff и расписание атомарны")
+  }
+  Container_Boundary(relayrole, "Telemetry relay") {
+    Component(relay, "Публикация задания", "Outbox relay", "Стабильный ID задания")
+  }
+  ContainerDb(db, "Схема Telemetry", "В общей PostgreSQL", "Измерения, конфигурация, задания, активность, расписание, inbox результатов, outbox")
+}
+BiRel(edge, access, "Пользовательский запрос / ответ", "gRPC/TLS")
+Rel(access, cache, "Читает без продления TTL")
+Rel(access, users, "При необходимости вызова Devices: обмен контекста", "gRPC/TLS")
+Rel_R(access, devices, "Проверка доступа при miss / отказе кэша", "gRPC/TLS")
+Rel(access, query, "Разрешённый запрос")
+Rel(query, db, "Читает историю", "SQL")
+Rel(config, devices, "Получает конфигурацию", "gRPC/TLS")
+Rel(config, db, "Сохраняет конфигурацию", "SQL")
+Rel(scheduler, db, "Транзакция: задание + активность + расписание + outbox", "SQL")
+Rel(relay, db, "Outbox", "SQL")
+Rel(relay, broker, "Задания опросов", "AMQP")
+Rel(broker, history, "Очередь измерений", "AMQP")
+Rel(history, db, "История", "SQL")
+Rel(broker, results, "Очередь результатов опросов", "AMQP")
+Rel(results, db, "Короткая транзакция; ACK после commit", "SQL")
+Rel(reconcile, db, "Зависшие задания / время повторной сверки", "SQL")
+Rel(reconcile, gateway, "Найти итог; запросить публикацию с прежним event_id", "gRPC/TLS")
+note bottom of reconcile
+  Нет итога / шлюз недоступен: активность не снимается.
+  Восстановленный итог приходит через очередь и inbox.
+  История не управляет завершением задания.
+  Детализация планировщика: to-be-code-telemetry-scheduler.
+  Фоновые роли не используют браузерную сессию.
+end note
+
+Lay_D(users, cache)
+Lay_D(cache, devices)
+SHOW_LEGEND()
+footer Проектируемая архитектура · общая PostgreSQL · все роли: OTel, метрики и структурированные логи
+@enduml

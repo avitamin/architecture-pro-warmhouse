@@ -1,0 +1,98 @@
+asyncapi: 3.0.0
+info:
+  title: telemetry — внутренние сообщения
+  version: 1.0.0
+  description: 'Проектируемый контракт. ACK/outbox и ограничения: ../contracts.md.
+    x-rabbitmq-binding документирует привязку очереди к exchange/routing key.'
+servers:
+  internal:
+    host: rabbitmq.warmhouse.example:5671
+    pathname: internal
+    protocol: amqps
+    security:
+    - $ref: '#/components/securitySchemes/broker'
+defaultContentType: application/json
+channels:
+  PollRequested:
+    address: poll.requested
+    messages:
+      PollRequested:
+        $ref: ./messages.yaml#/components/messages/PollRequested
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: wh.jobs.v1
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: internal
+        bindingVersion: 0.3.0
+    description: Независимая очередь wh.poll.requests
+    x-target-queues:
+    - wh.poll.requests
+  PollCompleted:
+    address: wh.telemetry.poll-results
+    messages:
+      PollCompleted:
+        $ref: ./messages.yaml#/components/messages/PollCompleted
+    bindings:
+      amqp:
+        is: queue
+        bindingVersion: 0.3.0
+        queue:
+          name: wh.telemetry.poll-results
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: internal
+    description: Независимая очередь wh.telemetry.poll-results
+    x-rabbitmq-binding:
+      exchange: wh.events.v1
+      routing_key: poll.completed
+  MeasurementRecorded:
+    address: wh.telemetry.measurements
+    messages:
+      MeasurementRecorded:
+        $ref: ./messages.yaml#/components/messages/MeasurementRecorded
+    bindings:
+      amqp:
+        is: queue
+        bindingVersion: 0.3.0
+        queue:
+          name: wh.telemetry.measurements
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: internal
+    description: Независимая очередь wh.telemetry.measurements
+    x-rabbitmq-binding:
+      exchange: wh.events.v1
+      routing_key: measurement.recorded
+operations:
+  sendPollRequested:
+    action: send
+    channel:
+      $ref: '#/channels/PollRequested'
+    messages:
+    - $ref: '#/channels/PollRequested/messages/PollRequested'
+    summary: Отправить poll.requested
+  receivePollCompleted:
+    action: receive
+    channel:
+      $ref: '#/channels/PollCompleted'
+    messages:
+    - $ref: '#/channels/PollCompleted/messages/PollCompleted'
+    summary: Получить poll.completed
+  receiveMeasurementRecorded:
+    action: receive
+    channel:
+      $ref: '#/channels/MeasurementRecorded'
+    messages:
+    - $ref: '#/channels/MeasurementRecorded/messages/MeasurementRecorded'
+    summary: Получить measurement.recorded
+components:
+  securitySchemes:
+    broker:
+      type: userPassword
+      description: Отдельные credentials/ACL роли; не служебный gRPC-токен.

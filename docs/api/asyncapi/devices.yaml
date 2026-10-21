@@ -1,0 +1,72 @@
+asyncapi: 3.0.0
+info:
+  title: devices — внутренние сообщения
+  version: 1.0.0
+  description: 'Проектируемый контракт. ACK/outbox и ограничения: ../contracts.md.
+    x-rabbitmq-binding документирует привязку очереди к exchange/routing key.'
+servers:
+  internal:
+    host: rabbitmq.warmhouse.example:5671
+    pathname: internal
+    protocol: amqps
+    security:
+    - $ref: '#/components/securitySchemes/broker'
+defaultContentType: application/json
+channels:
+  CommandRequested:
+    address: command.requested
+    messages:
+      CommandRequested:
+        $ref: ./messages.yaml#/components/messages/CommandRequested
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: wh.jobs.v1
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: internal
+        bindingVersion: 0.3.0
+    description: Независимая очередь wh.command.requests
+    x-target-queues:
+    - wh.command.requests
+  CommandStateChanged:
+    address: wh.devices.command-results
+    messages:
+      CommandStateChanged:
+        $ref: ./messages.yaml#/components/messages/CommandStateChanged
+    bindings:
+      amqp:
+        is: queue
+        bindingVersion: 0.3.0
+        queue:
+          name: wh.devices.command-results
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: internal
+    description: Независимая очередь wh.devices.command-results
+    x-rabbitmq-binding:
+      exchange: wh.events.v1
+      routing_key: command.state_changed
+operations:
+  sendCommandRequested:
+    action: send
+    channel:
+      $ref: '#/channels/CommandRequested'
+    messages:
+    - $ref: '#/channels/CommandRequested/messages/CommandRequested'
+    summary: Отправить command.requested
+  receiveCommandStateChanged:
+    action: receive
+    channel:
+      $ref: '#/channels/CommandStateChanged'
+    messages:
+    - $ref: '#/channels/CommandStateChanged/messages/CommandStateChanged'
+    summary: Получить command.state_changed
+components:
+  securitySchemes:
+    broker:
+      type: userPassword
+      description: Отдельные credentials/ACL роли; не служебный gRPC-токен.

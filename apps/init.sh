@@ -1,31 +1,27 @@
 #!/bin/bash
+set -euo pipefail
 
-# Exit on any error
-set -e
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+command -v curl >/dev/null || { echo "Error: curl is required to check the API." >&2; exit 1; }
+echo "Building and starting Smart Home services..."
+docker compose up --build --wait --wait-timeout 120
 
-echo "Starting the Smart Home Sensor API..."
-echo "Building and starting containers..."
-docker-compose up --build -d
-
-echo "Waiting for services to be ready..."
-# Wait for PostgreSQL to be ready
-for i in {1..30}; do
-  if docker exec smarthome-postgres pg_isready -U postgres > /dev/null 2>&1; then
-    echo "PostgreSQL is ready!"
-    break
-  fi
-  echo "Waiting for PostgreSQL to start... ($i/30)"
-  sleep 1
-done
-
-# Check if PostgreSQL is ready
-if ! docker exec smarthome-postgres pg_isready -U postgres > /dev/null 2>&1; then
-  echo "Error: PostgreSQL did not start within the expected time."
+# Ask Compose for the published port; never interpret .env as shell code.
+address=$(docker compose port app 8080 | head -n 1)
+port=${address##*:}
+if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+  echo "Error: cannot determine the application port." >&2
   exit 1
 fi
-
-echo "All services are up and running!"
-echo "The API is available at http://localhost:8080"
-echo ""
-echo "To view logs, run: docker-compose logs -f"
-echo "To stop the services, run: docker-compose down"
+base_url="http://127.0.0.1:$port"
+for ((attempt=1; attempt<=30; attempt++)); do
+  if curl --fail --silent --max-time 2 "$base_url/health" >/dev/null; then
+    echo "All services are ready. API: $base_url"
+    echo "Logs: docker compose logs -f"
+    echo "Stop without deleting data: docker compose stop"
+    exit 0
+  fi
+  sleep 1
+done
+echo "Error: application health check failed at $base_url/health." >&2
+exit 1

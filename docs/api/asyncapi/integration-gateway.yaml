@@ -1,0 +1,149 @@
+asyncapi: 3.0.0
+info:
+  title: integration-gateway — внутренние сообщения
+  version: 1.0.0
+  description: 'Проектируемый контракт. ACK/outbox и ограничения: ../contracts.md.
+    x-rabbitmq-binding документирует привязку очереди к exchange/routing key.'
+servers:
+  internal:
+    host: rabbitmq.warmhouse.example:5671
+    pathname: internal
+    protocol: amqps
+    security:
+    - $ref: '#/components/securitySchemes/broker'
+defaultContentType: application/json
+channels:
+  PollCompleted:
+    address: poll.completed
+    messages:
+      PollCompleted:
+        $ref: ./messages.yaml#/components/messages/PollCompleted
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: wh.events.v1
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: internal
+        bindingVersion: 0.3.0
+    description: Независимая очередь wh.telemetry.poll-results
+    x-target-queues:
+    - wh.telemetry.poll-results
+  MeasurementRecorded:
+    address: measurement.recorded
+    messages:
+      MeasurementRecorded:
+        $ref: ./messages.yaml#/components/messages/MeasurementRecorded
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: wh.events.v1
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: internal
+        bindingVersion: 0.3.0
+    description: Публикация в две независимые очереди Telemetry и Scenarios
+    x-target-queues:
+    - wh.telemetry.measurements
+    - wh.scenarios.measurements
+  CommandStateChanged:
+    address: command.state_changed
+    messages:
+      CommandStateChanged:
+        $ref: ./messages.yaml#/components/messages/CommandStateChanged
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: wh.events.v1
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: internal
+        bindingVersion: 0.3.0
+    description: Независимая очередь wh.devices.command-results
+    x-target-queues:
+    - wh.devices.command-results
+  PollRequested:
+    address: wh.poll.requests
+    messages:
+      PollRequested:
+        $ref: ./messages.yaml#/components/messages/PollRequested
+    bindings:
+      amqp:
+        is: queue
+        bindingVersion: 0.3.0
+        queue:
+          name: wh.poll.requests
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: internal
+    description: Независимая очередь wh.poll.requests
+    x-rabbitmq-binding:
+      exchange: wh.jobs.v1
+      routing_key: poll.requested
+  CommandRequested:
+    address: wh.command.requests
+    messages:
+      CommandRequested:
+        $ref: ./messages.yaml#/components/messages/CommandRequested
+    bindings:
+      amqp:
+        is: queue
+        bindingVersion: 0.3.0
+        queue:
+          name: wh.command.requests
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: internal
+    description: Независимая очередь wh.command.requests
+    x-rabbitmq-binding:
+      exchange: wh.jobs.v1
+      routing_key: command.requested
+operations:
+  sendPollCompleted:
+    action: send
+    channel:
+      $ref: '#/channels/PollCompleted'
+    messages:
+    - $ref: '#/channels/PollCompleted/messages/PollCompleted'
+    summary: Отправить poll.completed
+  sendMeasurementRecorded:
+    action: send
+    channel:
+      $ref: '#/channels/MeasurementRecorded'
+    messages:
+    - $ref: '#/channels/MeasurementRecorded/messages/MeasurementRecorded'
+    summary: Отправить measurement.recorded
+  sendCommandStateChanged:
+    action: send
+    channel:
+      $ref: '#/channels/CommandStateChanged'
+    messages:
+    - $ref: '#/channels/CommandStateChanged/messages/CommandStateChanged'
+    summary: Отправить command.state_changed
+  receivePollRequested:
+    action: receive
+    channel:
+      $ref: '#/channels/PollRequested'
+    messages:
+    - $ref: '#/channels/PollRequested/messages/PollRequested'
+    summary: Получить poll.requested
+  receiveCommandRequested:
+    action: receive
+    channel:
+      $ref: '#/channels/CommandRequested'
+    messages:
+    - $ref: '#/channels/CommandRequested/messages/CommandRequested'
+    summary: Получить command.requested
+components:
+  securitySchemes:
+    broker:
+      type: userPassword
+      description: Отдельные credentials/ACL роли; не служебный gRPC-токен.
