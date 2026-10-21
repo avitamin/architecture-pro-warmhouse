@@ -1,0 +1,60 @@
+@startuml to-be-components-scenarios
+!pragma layout smetana
+!include <C4/C4_Component>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 35
+skinparam ranksep 65
+title
+Умный дом — To-Be
+C4 Components · сервис сценариев
+end title
+
+Container(edge, "API Gateway", "gRPC/TLS", "Управление правилами")
+Container(users, "Users", "gRPC/TLS", "Обмен пользовательского токена для Devices")
+Container(devices, "Devices", "gRPC/TLS", "Права; идемпотентный приём команд")
+ContainerDb(cache, "Общий кэш прав", "Read-only для Scenarios", "Положительные разрешения; Devices — писатель")
+ContainerQueue(broker, "RabbitMQ internal", "AMQP", "Собственная очередь измерений Scenarios")
+Boundary(service, "Scenarios") {
+  Container_Boundary(api, "Scenarios API") {
+    Component(auth, "Контекст и доступ", "gRPC handlers / clients", "Подписанный контекст; права владельца")
+    Component(rules, "Управление правилами", "Доменный компонент", "Версии, включение, редактирование; та же строка координации")
+  }
+  Container_Boundary(worker, "Worker правил") {
+    Component(consumer, "Приём события измерения", "AMQP consumer", "ACK после обработки всех применимых правил; частичный повтор продолжает работу")
+    Component(evaluator, "Обработка одного правила", "Доменный компонент", "Строка FOR UPDATE; inbox; версия; порядок и свежесть; переход условия")
+    Component(permissions, "Фоновые проверки доступа", "Service-authenticated client", "Сохранённый владелец; сеть вне блокировки правила")
+  }
+  Container_Boundary(relayrole, "Scenarios relay") {
+    Component(relay, "Доставка команды", "Outbox / gRPC client", "Постоянный command_id и владелец; действующий служебный токен")
+  }
+  ContainerDb(db, "Схема Scenarios", "В общей PostgreSQL", "Правила, версии, состояние, inbox, срабатывания, outbox")
+}
+Rel(edge, auth, "Пользовательский запрос", "gRPC/TLS")
+Rel(auth, users, "Контекст для Devices при необходимости", "gRPC/TLS")
+Rel(auth, cache, "Чтение разрешения")
+Rel(auth, devices, "Права при miss / отказе кэша", "gRPC/TLS")
+Rel(auth, rules, "Управление своим правилом")
+Rel(rules, db, "Изменение под блокировкой строки правила", "SQL")
+Rel(broker, consumer, "Измерение", "AMQP")
+Rel(consumer, permissions, "Необходимые проверки до транзакции")
+Rel(permissions, cache, "Чтение разрешения")
+Rel(permissions, devices, "Проверка прав владельца; служебный контракт", "gRPC/TLS")
+Rel(consumer, evaluator, "Каждое применимое правило")
+Rel(evaluator, db, "Одна транзакция: inbox + состояние + срабатывание + outbox", "SQL")
+Rel(relay, db, "Сохранённые команды", "SQL")
+Rel(relay, devices, "command_id + владелец; проверка прав при приёме", "gRPC/TLS")
+note bottom of evaluator
+  Только более новое и свежее measured_at.
+  Первая проверка новой версии: действие при истинном условии.
+  Далее false → true; перезапуск не новая активация.
+  Нет свежести: нет нового действия, прежнее состояние сохранено.
+  Сеть и отправка команды выполняются вне SQL-блокировки.
+end note
+
+SHOW_LEGEND()
+footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+@enduml

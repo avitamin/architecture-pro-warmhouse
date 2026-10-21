@@ -1,0 +1,80 @@
+@startuml to-be-components-integration-gateway
+!pragma layout smetana
+!include <C4/C4_Component>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 35
+skinparam ranksep 65
+title
+Умный дом — To-Be
+C4 Components · шлюз интеграций
+end title
+
+Container(callers, "Telemetry / Video", "gRPC/TLS", "Сверка / повторная публикация; сигнализация")
+ContainerQueue(internal, "RabbitMQ internal", "AMQP", "Раздельные задания; проверенные события и результаты")
+ContainerQueue(raw, "RabbitMQ devices", "AMQP + MQTT plugin", "Общая очередь сырых ответов; MQTT-каналы приборов")
+System_Ext(device, "MQTT-оборудование", "Исходящий MQTT 5 / TLS")
+System_Ext(camera, "Камера", "Существующая сигнализация партнёра")
+Boundary(service, "Шлюз интеграций · одна кодовая база") {
+  Container_Boundary(api, "Gateway API") {
+    Component(status, "Состояние заданий", "gRPC handlers", "Служебный токен; поиск сохранённого итога и повторная публикация")
+    Component(video, "Адаптер сигнализации", "gRPC / partner adapter", "Преобразование сообщений сеанса; без видеобайтов")
+  }
+  Container_Boundary(inputs, "Приёмники") {
+    Component(commands, "Приём команд", "AMQP consumer", "Идемпотентное ожидание по command_id; ACK после commit приёма")
+    Component(replies, "Приём сырых ответов", "AMQP consumer", "Проверка и корреляция; сохранение; ACK после commit ответа")
+  }
+  Container_Boundary(polls, "Отдельный пул опросов") {
+    Component(poll, "Исполнитель опроса", "Worker", "Срок, lease и право; чтение сохранённого ответа; итог + outbox; затем ACK задания")
+    Component(padapter, "Адаптер опроса", "Общий код адаптеров", "MQTT-запрос; нормализация ответа")
+  }
+  Container_Boundary(commandpool, "Отдельный пул команд") {
+    Component(command, "Исполнитель команды", "Worker", "Выбор ожидающей команды; чтение сохранённого ответа")
+    Component(coord, "Координатор устройства", "Доменный компонент", "Короткие блокировки; занятость, lease, версия; ручной приоритет и граница отмены")
+    Component(cadapter, "Адаптер команды", "Общий код адаптеров", "Отправка и интерпретация подтверждения; без слепого повтора")
+  }
+  Container_Boundary(recoveryrole, "Восстановление") {
+    Component(recover, "Восстановление прав и исходов", "Background worker", "Опрос: прерванный итог. Команда: выяснение; занятость сохраняется")
+    Component(radapter, "Проверка через адаптер", "Общий код адаптеров", "Реальные возможности протокола; при недостатке доказательств ручной разбор")
+  }
+  Container_Boundary(relayrole, "Gateway relay") {
+    Component(relay, "Доставка событий", "Outbox relay", "Повтор сохраняет event_id и версию; независимые маршруты результатов и измерений")
+  }
+  ContainerDb(db, "Схема Gateway", "В общей PostgreSQL", "Задания, ожидающие команды, координация, права, сырые ответы, результаты, outbox")
+}
+Rel(callers, status, "Сверка", "gRPC/TLS")
+BiRel(callers, video, "Сигнализация", "gRPC/TLS")
+BiRel(video, camera, "Параметры сеанса", "Протокол партнёра; транспорт уточняется")
+Rel(status, db, "Читает итог / ставит прежнее событие в outbox", "SQL")
+Rel(internal, commands, "Очередь команд", "AMQP")
+Rel(commands, db, "Долговечный приём", "SQL")
+Rel(raw, replies, "Общая очередь ответов", "AMQP")
+Rel(replies, db, "Ответ и корреляция; не итог задания", "SQL")
+Rel(internal, poll, "Очередь опросов", "AMQP")
+Rel(poll, db, "Право, ответ, условное завершение и outbox", "SQL")
+Rel(poll, padapter, "После commit захвата права")
+Rel(padapter, raw, "Запрос", "MQTT 5 / TLS")
+Rel(command, db, "Ожидание / чтение ответа", "SQL")
+Rel(command, coord, "Резервирование и завершение")
+Rel(coord, db, "FOR UPDATE; состояние + версия + outbox", "SQL")
+Rel(command, cadapter, "Сетевое действие вне транзакции")
+Rel(cadapter, raw, "Команда", "MQTT 5 / TLS")
+Rel(recover, db, "Условные переходы; проверка права; итог + outbox", "SQL")
+Rel(recover, radapter, "Выяснить конкретную операцию")
+Rel(radapter, raw, "Диагностика", "MQTT 5 / TLS")
+BiRel(device, raw, "Прибор инициирует соединение", "MQTT 5 / TLS")
+Rel(relay, db, "Читает outbox / отмечает доставку", "SQL")
+Rel(relay, internal, "Измерения, результаты опросов и версии команд", "AMQP")
+note bottom of recover
+  Восстановление команд использует ту же строку координации.
+  Lease не отменяет физическое действие и не снимает занятость.
+  Старый исполнитель не перезаписывает новый итог.
+  Приём ответа сам по себе не выдаёт право завершить задание.
+end note
+
+SHOW_LEGEND()
+footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+@enduml

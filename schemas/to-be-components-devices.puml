@@ -1,0 +1,65 @@
+@startuml to-be-components-devices
+!pragma layout smetana
+!include <C4/C4_Component>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 35
+skinparam ranksep 65
+title
+Умный дом — To-Be
+C4 Components · сервис устройств
+end title
+
+Container(edge, "API Gateway", "gRPC/TLS", "Пользовательский контекст и служебный токен")
+Container(callers, "Telemetry / Video / Scenarios", "gRPC/TLS", "Права; команды сценариев с сохранённым владельцем")
+Container(ig, "Шлюз интеграций", "Контракт привязки", "Подтверждение от аутентифицированного прибора; доставка уточняется")
+ContainerQueue(broker, "RabbitMQ internal", "AMQP", "Задания команд / очередь результатов")
+ContainerDb(cache, "Общий кэш прав", "Продукт не выбран", "Только положительные записи с TTL")
+Boundary(service, "Devices") {
+  Container_Boundary(api, "Devices API") {
+    Component(auth, "Вход и проверка контекста", "gRPC handlers", "Служебный токен; пользовательский токен либо разрешённый фоновый контракт")
+    Component(registry, "Реестр и возможности", "Доменный компонент", "Регистрация; параметры интеграции")
+    Component(binding, "Привязка", "Доменный компонент", "Секрет, одна активная попытка, физическое подтверждение, один владелец")
+    Component(access, "Проверка владения", "Доменный компонент", "Источник прав; единственный писатель разрешений")
+    Component(commands, "Приём команды", "Доменный компонент", "command_id + содержимое; проверка; номер принятия; outbox")
+    Component(repo, "Репозитории и транзакции", "SQL", "Данные только своей схемы")
+  }
+  Container_Boundary(resultrole, "Worker результатов команд") {
+    Component(results, "Применение результата", "AMQP consumer", "Версия и состояние атомарно; старое игнорируется; конфликт равной версии не затирает данные")
+  }
+  Container_Boundary(relayrole, "Devices relay") {
+    Component(relay, "Доставка задания", "Outbox relay", "Стабильный command_id; повторы допустимы")
+  }
+  ContainerDb(db, "Схема Devices", "В общей PostgreSQL", "Реестр, владение, попытки, команды, порядок, применённая версия, outbox")
+}
+Rel(edge, auth, "Запросы / ответы", "gRPC/TLS")
+Rel(callers, auth, "Права / конфигурация / команда", "gRPC/TLS")
+Rel(ig, binding, "Подтверждение попытки; аутентифицированный источник")
+Rel(auth, registry, "Реестр")
+Rel(auth, binding, "Привязка")
+Rel(auth, access, "Права")
+Rel(auth, commands, "Принять команду")
+Rel(commands, access, "Проверить владельца и действие")
+Rel(registry, repo, "Читает / изменяет")
+Rel(binding, repo, "Атомарно завершает привязку")
+Rel(access, repo, "Читает владение")
+Rel(access, cache, "Создаёт / обновляет / удаляет разрешения")
+Rel(commands, repo, "Одна транзакция: команда + порядок + outbox")
+Rel(repo, db, "Своя схема", "SQL")
+Rel(broker, results, "Результат команды", "AMQP")
+Rel(results, db, "Проверка версии и применение в одной транзакции; ACK после commit", "SQL")
+Rel(relay, db, "Читает outbox / отмечает доставку", "SQL")
+Rel(relay, broker, "Публикует задание", "AMQP")
+note bottom of commands
+  Повтор с тем же содержимым возвращает прежний результат.
+  Иной payload при том же command_id — конфликт.
+  «Принята» после commit не означает «выполнена».
+  Исход отмены до исполнения поступает с версией от шлюза.
+end note
+
+SHOW_LEGEND()
+footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+@enduml

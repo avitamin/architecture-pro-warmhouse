@@ -1,0 +1,49 @@
+@startuml to-be-components-users
+!pragma layout smetana
+!include <C4/C4_Component>
+LAYOUT_LEFT_RIGHT()
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 100
+skinparam nodesep 35
+skinparam ranksep 65
+title
+Умный дом — To-Be
+C4 Components · сервис пользователей
+end title
+
+Container(edge, "API Gateway", "gRPC/TLS", "Проверяет каждую защищённую сессию; без положительного кэша")
+Container(callers, "Telemetry / Video / Scenarios", "gRPC/TLS", "Последующий синхронный пользовательский вызов")
+Boundary(service, "Users") {
+  Container_Boundary(api, "Users API") {
+    Component(entry, "API и служебная аутентификация", "gRPC handlers", "Разрешённый caller и метод")
+    Component(accounts, "Учётные записи", "Доменный компонент", "Первоначальный способ входа ещё не выбран")
+    Component(sessions, "Серверные сессии", "Доменный компонент", "Создание после входа; срок и отзыв; проверка на каждый запрос")
+    Component(exchange, "Проверка делегирования", "Доменный компонент", "Исходный токен, вызывающий сервис, следующий получатель; без произвольной подмены пользователя")
+    Component(issuer, "Выпуск внутреннего токена", "Signing component", "Подписанный контекст для конкретного получателя; ограничения и срок")
+    Component(repo, "Репозитории", "SQL", "Аккаунты и сессии своей схемы")
+  }
+  ContainerDb(db, "Схема Users", "В общей PostgreSQL", "Учётные записи; серверные сессии, срок и отзыв")
+}
+Rel(edge, entry, "Сессия + целевой сервис", "gRPC/TLS")
+Rel(callers, entry, "Исходный контекст + следующий сервис", "gRPC/TLS")
+Rel(entry, sessions, "Проверить / отозвать сессию")
+Rel(entry, accounts, "Операции учётной записи")
+Rel(entry, exchange, "Обмен токена")
+Rel(sessions, issuer, "Подтверждённая личность из сессии")
+Rel(exchange, issuer, "Разрешённый ограниченный контекст")
+Rel(accounts, repo, "Учётные записи")
+Rel(sessions, repo, "Сессии")
+Rel(repo, db, "Своя схема", "SQL")
+note bottom of issuer
+  Браузеру — только opaque cookie через API Gateway.
+  Secure / HttpOnly / SameSite; CSRF-защита изменений.
+  Формат, алгоритм, ключи и TTL пока не выбраны.
+  Отзыв сессии не аннулирует уже выданный токен автоматически.
+  Фоновая автоматизация не обменивает истёкший браузерный токен.
+end note
+
+SHOW_LEGEND()
+footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+@enduml
