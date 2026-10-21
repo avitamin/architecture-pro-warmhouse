@@ -1,0 +1,190 @@
+@startuml to-be-er
+!pragma layout smetana
+top to bottom direction
+hide circle
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam linetype polyline
+skinparam nodesep 50
+skinparam ranksep 80
+skinparam packageStyle rectangle
+skinparam packageTitleAlignment left
+skinparam classAttributeIconSize 0
+title Умный дом — To-Be\nЛогическая ER-модель предметной области
+
+package "Users · учётные записи" as UsersContext #EAF0FA {
+  entity "User · Пользователь" as User {
+    * id : ID <<PK>>
+    --
+    * name : Text
+    * status : AccountState
+    * created_at : InstantUTC
+  }
+}
+
+package "Devices · дома и оборудование" as DevicesContext #EAF5EC {
+  entity "House · Дом" as House {
+    * id : ID <<PK>>
+    --
+    * owner_user_id : ID <<REF User>>
+    * name : Text
+  }
+
+  entity "DeviceType · Тип устройства" as DeviceType {
+    * id : ID <<PK>>
+    --
+    * code : Text
+    * name : Text
+  }
+
+  entity "Device · Устройство / модуль" as Device {
+    * id : ID <<PK>>
+    --
+    * type_id : ID <<FK DeviceType>>
+    house_id : ID <<FK House>>
+    * name : Text
+    * manufacturer : Text
+    * serial_number : Text
+    * registration_status : RegistrationState
+  }
+
+  entity "DeviceCapability · Возможность" as Capability {
+    * id : ID <<PK>>
+    --
+    * device_id : ID <<FK Device>>
+    * code : Text
+    * kind : CapabilityKind
+    value_type : ValueType
+    unit : Text
+  }
+
+  entity "BindingAttempt · Попытка привязки" as Binding {
+    * id : ID <<PK>>
+    --
+    * device_id : ID <<FK Device>>
+    * user_id : ID <<REF User>>
+    * house_id : ID <<FK House>>
+    * status : BindingState
+    * created_at : InstantUTC
+    * expires_at : InstantUTC
+    confirmed_at : InstantUTC
+  }
+
+  entity "DeviceCommand · Команда" as Command {
+    * id : ID <<PK>>
+    --
+    * capability_id : ID <<FK DeviceCapability>>
+    * user_id : ID <<REF User>>
+    * source : ManualOrScenario
+    * parameters : Parameters
+    acceptance_seq : Integer
+    * status : CommandState
+    result_version : Integer
+    * created_at : InstantUTC
+  }
+}
+
+package "Telemetry" as TelemetryContext #FFF3D9 {
+  entity "TelemetryData · Измерение / состояние" as Telemetry {
+    * id : ID <<PK>>
+    --
+    * event_id : ID <<EVENT>>
+    * device_id : ID <<REF Device>>
+    * capability_id : ID <<REF DeviceCapability>>
+    * value : Value
+    * measured_at : InstantUTC
+    * gateway_received_at : InstantUTC
+  }
+}
+
+package "Scenarios" as ScenariosContext #F2EBF9 {
+  entity "AutomationRule · Правило" as Rule {
+    * id : ID <<PK>>
+    --
+    * owner_user_id : ID <<REF User>>
+    * name : Text
+    * enabled : Boolean
+    * version : Integer
+    activated_at : InstantUTC
+    -- одно условие --
+    * input_capability_id : ID <<REF DeviceCapability>>
+    * operator : Comparison
+    * threshold : Value
+    * max_data_age : Duration
+    -- одно действие --
+    * target_capability_id : ID <<REF DeviceCapability>>
+    * action_parameters : Parameters
+    -- состояние текущей версии --
+    * initial_evaluated : Boolean
+    last_condition_met : Boolean
+    last_value : Value
+    last_measured_at : InstantUTC
+  }
+
+  entity "RuleTrigger · Срабатывание" as Trigger {
+    * id : ID <<PK>>
+    --
+    * rule_id : ID <<FK AutomationRule>>
+    * rule_version : Integer
+    * event_id : ID <<EVENT>>
+    * triggered_at : InstantUTC
+    * command_id : ID <<REF DeviceCommand>>
+  }
+}
+
+package "Video" as VideoContext #FCEBE6 {
+  entity "VideoSession · Сеанс просмотра" as Video {
+    * id : ID <<PK>>
+    --
+    * user_id : ID <<REF User>>
+    * camera_device_id : ID <<REF Device>>
+    * status : VideoSessionState
+    * started_at : InstantUTC
+    ended_at : InstantUTC
+  }
+}
+
+' Сплошные линии — локальные FK. Кратности относятся к записям модели.
+House |o--o{ Device : размещает
+DeviceType ||--o{ Device : классифицирует
+Device ||--o{ Capability : имеет
+Device ||--o{ Binding : попытки
+House ||--o{ Binding : выбранный дом
+Capability ||--o{ Command : адресат
+Rule ||--o{ Trigger : срабатывает
+
+' Пунктир — логические ссылки, даже при общей PostgreSQL.
+User ||..o{ House : владеет
+User ||..o{ Binding : заявитель
+User ||..o{ Command : инициатор
+User ||..o{ Rule : владеет
+User ||..o{ Video : смотрит
+Device ||..o{ Telemetry : источник
+Capability ||..o{ Telemetry : измеряется
+Capability ||..o{ Rule : input_capability_id
+Capability ||..o{ Rule : target_capability_id
+Device ||..o{ Video : камера
+Command |o..o| Trigger : command_id\nприём может быть позже
+
+legend bottom left
+  |= Обозначение |= Значение |
+  | * / без * | Обязательный / допускающий отсутствие атрибут |
+  | PK / FK | Идентификатор / локальный внешний ключ |
+  | REF / пунктир | Межсервисная ссылка; без FK и SQL JOIN |
+  | EVENT | ID события шлюза; не FK на историю Telemetry |
+  | Две черты | Ровно один (1) |
+  | Круг и черта | Ноль или один (0..1) |
+  | Круг и «воронья лапка» | Ноль или много (0..N) |
+  | ID, Text, Value, Parameters | Логические типы, не SQL-типы |
+  | Value | Число, Boolean или текст по определению возможности |
+  | InstantUTC / Duration | Момент в UTC / длительность |
+  Привязанный Device обязательно имеет дом; владелец — через House.
+  Возможности: измерение, управление или live-видео; code различает каналы.
+  value_type обязателен для измерений; unit — когда применима.
+  Состояние регистрации, показание и исход команды различаются.
+  VideoSession — логический сеанс; постоянное хранение не выбрано.
+  Технические таблицы и видеоархив в это представление не входят.
+endlegend
+footer Проектируемая предметная модель · ограничения и примеры — README, задание 3
+@enduml
