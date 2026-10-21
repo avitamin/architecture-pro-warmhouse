@@ -8,7 +8,8 @@
     "test:telemetry": "node --test --test-concurrency=1 telemetry.test.mjs telemetry-messages.test.mjs telemetry-background.test.mjs",
     "test:messages": "node --test --test-concurrency=1 telemetry-messages.test.mjs command-messages.test.mjs",
     "test:telemetry:readonly": "node --test telemetry-readonly.test.mjs",
-    "test:commands": "node --test --test-concurrency=1 commands.test.mjs"
+    "test:commands": "node --test --test-concurrency=1 commands.test.mjs",
+    "test:all": "npm run test:legacy && npm run test:telemetry && npm run test:commands && npm run test:messages"
   },
   "dependencies": {
     "ajv": "8.20.0",

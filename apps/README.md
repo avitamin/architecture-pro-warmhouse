@@ -174,7 +174,7 @@ docker compose --env-file .env.example ps -a
 docker compose --env-file .env.example logs --tail 100 app temperature-api rabbitmq
 ```
 
-У Node runner нет скриптов будущих этапов до появления соответствующих тестов.
+Этот раздел фиксирует основу этапа 1; актуальная общая приёмка приведена ниже.
 Readiness четырёх процессов и legacy smoke не подтверждают новые микросервисы.
 
 ## Телеметрия MVP (этап 2)
@@ -307,4 +307,94 @@ Observer подписан до отправки и использует свою
 Начальный HTTP RED был 404 вместо 202; тот же тест стал GREEN.
 Ограничения доставки и симулятора перечислены в [MVP-профиле](mvp-profile.md).
 Нет outbox/inbox/recovery/Scenarios/auth/TLS. Диагностический API не опубликован
-на host и не является Devices API. Общая приёмка этапа 4 ещё не выполнялась.
+на host и не является Devices API. На момент этапа 3 общая приёмка ещё не выполнялась;
+её актуальные результаты приведены ниже.
+
+## Общая приёмка MVP (этап 4)
+
+Проверено 2026-10-22 на свежем проекте и новых PostgreSQL/RabbitMQ volumes.
+Предыдущие разделы — история отдельных этапов. Для полного текущего запуска
+используйте этот раздел. Требуются Docker Compose v2.24.4+ (проверено v2.29.1),
+свободные порт/подсеть и доступ к registry/dependencies при первой сборке.
+Не переиспользуйте старый project/volume как доказательство свежего запуска.
+
+Фактически выполнено из `apps` (учебные credentials из `.env.example`):
+
+```bash
+export COMPOSE_FILE=docker-compose.mvp.yml
+export COMPOSE_PROJECT_NAME=warmhouse-stage4-20261022
+export MVP_APP_PORT=18085
+export MVP_SUBNET=10.246.10.0/24
+export AMQP_TEMPERATURE=0
+export SCHEDULER_ENABLED=true
+docker compose --env-file .env.example config --quiet
+docker compose --env-file .env.example --profile test build app devices telemetry temperature-api e2e grpc-tests
+docker compose --env-file .env.example up -d --no-build --wait --wait-timeout 180
+docker compose --env-file .env.example run --no-deps e2e npm run test:all
+```
+
+Имя выше уже занято сохранённой приёмкой: для нового запуска выберите новое
+уникальное имя и свободные порт/подсеть. `test:all` последовательно выполняет
+legacy, telemetry, commands, messages — **PASS 3/3 + 5/5 + 2/2 + 2/2**, без skip.
+Readiness RPC подтверждается реальными вызовами тестов; `up --wait` для Devices
+и Telemetry без healthcheck подтверждает только running.
+
+Seed создаётся повторяемо: `dev-thermostat` / `house-home` / `user-1`, температура
+`cap-temperature` / Cel и отопление `cap-heating` / set enabled. AMQP=0 проверяет
+сохранение нуля; старые HTTP readings остаются переменными 15–30 °C. Legacy suite
+создаёт уникальный датчик и проверяет Create/List/Get. Остальной старый CRUD
+сохранён в коде, но Update/Delete/Patch этим suite не покрываются.
+Каждая команда получает новый UUID и будущий expires_at; observer готов до действия.
+Проверяются реальные AMQP payload по действующим JSON Schema, версии, сроки,
+config/sequence, связанные ID и диагностические enabled/last_command_id.
+Ни CRUD, ни история старого монолита не перенесены в новые сервисы.
+
+API доступен только на `http://127.0.0.1:18085`; gRPC, БД, RabbitMQ и diagnostic
+симулятора остаются внутри сети. Демонстрационный пользователь фиксирован;
+полноценной аутентификации, авторизации/Users, TLS и recovery нет.
+Симулятор заменяет шлюз и прибор, хранит отопление в памяти. Нет outbox/inbox,
+атомарности PostgreSQL+AMQP, обработки повторной доставки или exactly-once.
+Риск буквального требования ООП-языков при выбранном Go сохраняется.
+
+Логи и осмотр (те же env/project):
+
+```bash
+docker compose --env-file .env.example ps -a
+docker compose --env-file .env.example logs --no-color --tail 100 app devices telemetry temperature-api
+```
+
+Логи содержат request_id, poll_job_id, command_id и event_id по соответствующему
+потоку. Runner печатает ID, снимки команд и конечное состояние; ожидания ограничены.
+Все one-off контейнеры и volumes оставлены, автоматической очистки нет.
+
+Дополнительные проверки из `apps` с теми же env/project:
+
+```bash
+docker compose --env-file .env.example run --no-deps grpc-tests sh -c 'cd /workspace/apps/contracts/go && sh ../generate-go.sh && cd /workspace/apps/telemetry && go test -race -count=1 -v ./... && go vet ./... && cd /workspace/apps/temperature-api && go test -race -count=1 ./... && go vet ./... && cd /workspace/apps/smart_home && go test ./... && go vet ./...'
+docker compose --env-file .env.example run --no-deps devices-tests ./gradlew --no-daemon --max-workers=2 --rerun-tasks test
+SCHEDULER_ENABLED=false docker compose --env-file .env.example up -d --no-deps --no-build telemetry
+docker inspect warmhouse-stage4-20261022-telemetry-1 --format '{{json .Config.Env}}'
+SCHEDULER_ENABLED=false docker compose --env-file .env.example run --no-deps e2e npm run test:telemetry:readonly
+SCHEDULER_ENABLED=true docker compose --env-file .env.example up -d --no-deps --no-build --wait --wait-timeout 60 telemetry
+```
+
+PASS: Go/JVM generation/compile; Go public ListTelemetry (`number_value=0`),
+Devices public RPC tests 2/2 (`BOOLEAN_VALUE` true/false); существующие simulator
+race tests и Go vet. У contracts/монолита предметных unit-тестов нет; JVM contracts
+`test NO-SOURCE` не считается RPC-тестом. Readonly PASS: фактический env scheduler=false,
+42 GET, сохранённая история неизменна и observer не получил PollRequested за 5 s.
+После проверки scheduler возвращён в true. Это не тест восстановления после сбоя.
+
+Из корня (host Node/npm и protoc нужны только для этих статических проверок):
+
+```bash
+task6_tmp=$(mktemp -d /tmp/warmhouse-contract-check-XXXXXX)
+npm --prefix docs/api run check
+protoc -I docs/api/proto --include_imports --descriptor_set_out="$task6_tmp/contracts.pb" docs/api/proto/warmhouse.proto
+git diff --check
+```
+
+API check — PASS: OpenAPI, четыре AsyncAPI, 127 examples и cross-transport
+invariants; descriptor — PASS. Спецификации этапом 4 не менялись, сборка их
+просмотра и browser QA не повторялись. Это отдельные статические проверки,
+не доказательство runtime. Recovery/security/нагрузка/оборудование — NOT RUN.

@@ -1,7 +1,7 @@
-# Локальный демонстрационный MVP — этапы 1–3
+# Локальный демонстрационный MVP
 
 Это учебный профиль на одном компьютере, не production-развёртывание.
-Запуск описан в [apps README](README.md#локальная-основа-mvp-этап-1).
+Запуск описан в [apps README](README.md#общая-приёмка-mvp-этап-4).
 Целевые [HTTP/gRPC контракты](../docs/api/README.md) сохраняются.
 
 | Граница | Реализуется в MVP | Текущее состояние / отложено |
@@ -19,8 +19,8 @@
 | Единый симулятор | Существующий `temperature-api`, совместимый HTTP | HTTP, telemetry и command AMQP в одном процессе; отопление в памяти |
 | Температура | HTTP 15–30 °C, шаг 0,1, без соседнего повтора | `AMQP_TEMPERATURE` задаёт фиксированное AMQP-значение; 17 по умолчанию, 0 поддержан отдельно |
 | Пользователь и seed | user-1, house-home, dev-thermostat, cap-temperature/Cel, cap-heating/set/enabled | Повторяемый seed одного прибора и фиксированного владельца user-1 без Users |
-| Генерация | Общий proto → Go и JVM protobuf/gRPC | Этап 1, native compile/check без предметных сервисов |
-| Тестовая граница | node:test, Ajv 2020 + date-time, AMQP client, реальный legacy HTTP | Legacy, telemetry HTTP/AMQP и native public RPC tests; commands и message tests; test:all относится к этапу 4 |
+| Генерация | Общий proto → Go и JVM protobuf/gRPC | Go/JVM generation/compile; отдельные native public RPC tests |
+| Тестовая граница | node:test, Ajv 2020 + date-time, AMQP client, реальный legacy HTTP | test:all: legacy 3/3, telemetry 5/5, commands 2/2, messages 2/2 на свежем стеке этапа 4 |
 | Сохранность | Именованные project-scoped volumes PostgreSQL/RabbitMQ | Не сбрасывать старые тома ради init.sql; новая проверка использует новый project |
 | Изоляция и безопасность | Только HTTP монолита на `127.0.0.1`; остальные порты внутри сети | Демонстрационные credentials; нет production auth, TLS, cookie/CSRF и прав Users |
 | Доставка и восстановление | Успешный поток с точными контрактами | Нет outbox/inbox, exactly-once, атомарности БД+AMQP, lease, failover/recovery |
@@ -61,6 +61,12 @@ reason_code=COMPLETED. Publisher confirm не переводит команду 
 долговечно; нет обработки повторной доставки, приоритета сценариев или recovery.
 Невалидная команда останавливает AMQP-процесс симулятора, ошибка результата
 останавливает его consumer в Devices без ACK; quarantine/retry не реализованы.
-Физическое исполнение, recovery, production security и этап 4 — **NOT RUN**. Генерация всех RPC не означает их поддержку;
+Физическое исполнение, recovery и production security — **NOT RUN**. Генерация всех RPC не означает их поддержку;
 нереализованные RPC отвечают UNIMPLEMENTED. Риск буквального требования
 ООП-языков при выбранном Go остаётся.
+
+Общая runtime-приёмка этапа 4 — **PASS** на новом project/volume с
+`AMQP_TEMPERATURE=0`; [команды и границы доказательств](README.md#общая-приёмка-mvp-этап-4).
+Сохранность всего старого CRUD подтверждена исходниками; runtime legacy suite
+проверяет Create/List/Get, не Update/Delete/Patch. Новые потоки не переносят
+старые таблицы или CRUD в Devices/Telemetry.

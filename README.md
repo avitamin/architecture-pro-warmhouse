@@ -540,80 +540,54 @@ Locations - название комнаты, sensorId - идентификато
 
 В результате у вас должны быть созданы Dockerfiles и docker-compose для запуска микросервисов.
 
-### Основа MVP: этап 1 (2026-10-22)
+### Результат MVP (2026-10-22)
 
-Подготовлен [локальный демонстрационный профиль](apps/mvp-profile.md) и
-[отдельный Compose-запуск](apps/README.md#локальная-основа-mvp-этап-1): существующий
-монолит, PostgreSQL, RabbitMQ и единый симулятор на базе `temperature-api`.
-Код и тесты эмулятора задания 5 сохранены; новые обработчики AMQP пока не реализованы.
-Добавлены Node runner и [генерация Go/JVM protobuf/gRPC](apps/contracts/README.md)
-из общего proto. У монолита закреплены базовые образы вместо `latest`.
+Реализованы [Devices на Kotlin/Spring Boot](apps/devices/) и
+[Telemetry на Go/gRPC-Go](apps/telemetry/), интегрированные с Go-монолитом через
+[общий protobuf](docs/api/proto/warmhouse.proto). Сервисы используют отдельные
+схемы и роли PostgreSQL. [Compose](apps/docker-compose.mvp.yml) собирает и запускает
+монолит, оба сервиса, PostgreSQL, RabbitMQ и единый Go-симулятор.
+[Воспроизводимые команды и проверки](apps/README.md#общая-приёмка-mvp-этап-4),
+[реализованный профиль и ограничения](apps/mvp-profile.md).
 
-- PASS: Compose config, сборка монолита/симулятора/runner/codegen, readiness четырёх процессов на новом изолированном проекте.
-- PASS: реальный HTTP Create → пять List → Get by ID; оба маршрута симулятора, меняющиеся значения и свежие времена; AMQP-соединение runner и Ajv date-time (3 теста).
-- PASS: существующие тесты симулятора с `-race`, Go vet обоих модулей; в монолите unit-тестов нет.
-- PASS: Go/JVM генерация и компиляция; повторная генерация дала одинаковые SHA256 для 83 файлов. Предметных gRPC-тестов пока нет (`NO-SOURCE` JVM).
-- PASS: существующие проверки API (127 schema examples), protoc descriptor, сборка просмотра и diff; это не runtime новых сервисов.
-- NOT RUN: этапы 2–4 — Devices, Telemetry, новые HTTP/AMQP-потоки и общая приёмка. Задание 6 целиком не завершено; риск требования ООП-языков при выбранном Go сохраняется.
+Повторяемый seed: `dev-thermostat`, дом `house-home`, пользователь `user-1`,
+возможности `cap-temperature` / Cel и `cap-heating` / set enabled.
+Telemetry получает конфигурацию Devices по gRPC и независимо от HTTP отправляет
+`poll.requested`. Симулятор возвращает `measurement.recorded` и связанный
+`poll.completed`; сохранённая история читается через новый GET монолита.
+POST команды возвращает 202/Location/accepted; Devices публикует
+`command.requested`, симулятор меняет отопление и отправляет
+`command.state_changed`, после чего GET той же команды показывает succeeded.
+Publisher confirm сам по себе не подтверждает исполнение.
 
-### Телеметрия MVP: этап 2 (2026-10-22)
+Старый CRUD `/api/v1/sensors`, его БД, HTTP-клиент температуры и существующие тесты
+сохранены. Runtime-проверка старого API охватывает Create → пять List → Get by ID;
+остальные старые операции сохранены по исходникам, в общей e2e не проверялись.
+Новые маршруты — первый шаг интеграции, полная миграция монолита не выполнена.
 
-Добавлены Devices на Kotlin/Spring Boot и Telemetry на Go/gRPC-Go с собственными
-схемами и ролями PostgreSQL. Seed — `dev-thermostat`, дом `house-home`, владелец
-`user-1`, возможности `cap-temperature` / Cel и `cap-heating`. В этом этапе
-реализовано только чтение metadata и фоновая телеметрия; команды ещё не реализованы.
+Фактическая общая приёмка на свежем проекте `warmhouse-stage4-20261022` и новых томах:
 
-Devices выдаёт действующую конфигурацию по gRPC. Telemetry независимо от HTTP
-публикует `poll.requested`, единый Go-симулятор возвращает `measurement.recorded`
-и связанный `poll.completed`, Telemetry сохраняет историю. Два новых GET-маршрута
-монолита читают Device и TelemetryPage через generated gRPC clients. Фильтры,
-keyset-пагинация и mapping Value/optional timestamps поддержаны. Старый `/sensors`
-сохранён; это первый шаг интеграции, полная миграция монолита не выполнена.
+- PASS: сборка текущих образов, запуск и readiness; API только `127.0.0.1:18085`.
+- PASS: `test:all` — legacy 3/3, telemetry 5/5, commands 2/2, messages 2/2,
+  без skip. Фоновая история растёт без GET, исходные ns timestamps сохраняются.
+- PASS: реальный AMQP, JSON Schema, корреляция poll/measurement/result и команд;
+  отдельные включение и выключение с новыми ID и проверкой состояния симулятора.
+- PASS: при `AMQP_TEMPERATURE=0` ноль проходит через AMQP/HTTP и protobuf oneof;
+  `false` сохраняется в командах. Legacy HTTP по-прежнему меняет температуру.
 
-[Команды запуска и проверок](apps/README.md#телеметрия-mvp-этап-2),
-[реализованный профиль и ограничения](apps/mvp-profile.md),
-[общий protobuf](docs/api/proto/warmhouse.proto).
+- PASS: native Go gRPC/race/vet, JVM public RPC 2/2 и компиляция bindings;
+  API check (127 examples), protobuf compilation.
+- PASS: при явно выключенном scheduler 42 GET не меняют историю и не создают
+  PollRequested за 5 s; затем scheduler возвращён в true.
 
-Фактические проверки этапа 2:
+Сначала в этапах 2–3 были получены предметные RED (HTTP 404 новых маршрутов),
+затем те же тесты стали GREEN. Общая приёмка не использует старые команды и историю.
+Полноценные security/Users/TLS, outbox/inbox, атомарность PostgreSQL+AMQP,
+восстановление после сбоев, повторы и exactly-once не реализованы. Шлюз и физическое
+оборудование заменены одним симулятором; результат доказывает действие только в нём.
+Recovery, нагрузка, безопасность и реальное оборудование — NOT RUN.
 
-- PASS, RED → GREEN: первый тест на работающем монолите упал с HTTP 404 при
-  health=200, затем тот же тест получил `17 Cel` через полный поток.
-- PASS: реальные публичные GetDevice/ListPollConfigurations (JVM client) и
-  ListTelemetry (Go client), включая number Value, фильтры и подписанный cursor.
-- PASS: реальные AMQP payload по существующим JSON Schema, уникальные event_id,
-  корреляция poll_job_id и measurement_event_id, сохранение исходных ns timestamps.
-- PASS: история растёт за 6,5 s без HTTP; после явного выключения scheduler
-  42 GET не меняют историю и не создают PollRequested (observer, 5 s).
-- PASS: свежий отдельный стек с `AMQP_TEMPERATURE=0`; ноль сохраняется через
-  AMQP, protobuf oneof и HTTP. Legacy Create/List/Get и переменный HTTP симулятора
-  продолжают работать; native Go tests/race/vet и JVM RPC tests выполнены.
-- NOT RUN: команды/false, общая приёмка этапа 4, recovery, физическое оборудование,
-  production security и нагрузка. Задание 6 целиком ещё не завершено.
-
-Изолированные проекты этапа 2 используют localhost-порты 18082 (17 Cel) и 18083
-(0 Cel); прежние проекты и тома сохранены. Ошибки подготовки и RED/GREEN с точными
-командами записаны в локальном `.local/task-6-stage-2-report.md`.
-Нет outbox/inbox, восстановления текущего poll после рестарта и атомарности БД+AMQP;
-ответ симулятора не доказывает работу оборудования. Риск буквального требования
-ООП-языков при выбранном Go сохраняется. Публикация не выполнялась.
-
-
-### Ручные команды MVP: этап 3 (2026-10-22)
-
-[Два маршрута команд](apps/README.md#ручные-команды-mvp-этап-3) монолита используют
-Devices gRPC. Devices сохраняет accepted, acceptance_seq, границу ручной отмены,
-срок и конфигурацию; публикует CommandRequested. Единый Go-симулятор выполняет set,
-сохраняет enabled/last_command_id в памяти и отправляет CommandStateChanged;
-после применения результата Devices GET показывает succeeded. Подтверждение
-публикации брокером само по себе не означает исполнения.
-
-- PASS: HTTP RED до реализации (404 вместо 202), затем GREEN того же теста.
-- PASS: включение и отдельное выключение с новым ID, 202/Location, succeeded,
-  совпадающий ID и true/false диагностического состояния симулятора.
-- PASS: реальные AMQP payload по действующим схемам, обязательные версии/поля,
-  sequence/manual_cancel_before_seq, сроки/config и корреляция результата.
-- PASS: public gRPC, Boolean oneof true/false, HTTP scalar mapping и optional counters;
-  регрессия telemetry/legacy и native Go tests/vet.
-- NOT RUN: общая приёмка этапа 4, recovery/outbox/inbox, Scenarios, production security,
-  нагрузка и физическое оборудование. Задание 6 целиком ещё не завершено;
-  риск буквального требования ООП-языков при Go сохраняется.
+Go выбран пользователем для Telemetry; риск буквального несоответствия требованию
+«каждый микросервис на своём ООП языке» остаётся. Runtime PASS согласованного MVP
+не доказывает формального выполнения этого требования или всей To-Be архитектуры.
+Commit/push/PR/deploy в рамках общей приёмки не выполнялись.
