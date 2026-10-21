@@ -1,0 +1,91 @@
+@startuml to-be-sequence-api-flow
+title Умный дом — API v1\nОпрос → измерение → правило → команда → результат
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 160
+hide footbox
+autonumber
+actor "Пользователь" as U
+participant "API Gateway" as E
+participant "Users" as A
+participant "Devices" as D
+participant "Telemetry" as T
+queue "RabbitMQ\ninternal" as R
+participant "Integration\nGateway" as G
+participant "Адаптер /\nприбор" as H
+participant "Scenarios" as S
+
+U -> E: HTTP: создать активное правило
+E -> A: ValidateSession(cookie, CSRF, audience=scenarios)
+A --> E: Подписанный контекст
+E -> S: CreateRule + контекст Scenarios
+S -> A: ExchangeContext(audience=devices)
+A --> S: Контекст Devices
+S -> D: GetDevice для входа и выхода; права / возможности
+D --> S: Допустимые возможности владельца
+S -> S: TX: правило v1, activated_at, начальное состояние
+S --> E: Rule
+E --> U: 201 + Location
+
+T -> D: ListPollConfigurations
+D --> T: Снимок без секретов, версия, valid_until, политика
+T -> T: TX: poll_job_id + занятость + outbox
+T -> R: PollRequested с исходным сроком снимка
+R -> G: Задание опроса
+G -> H: Опрос по проверенному протоколу адаптера
+H --> G: Значение + measured_at либо ошибка
+G -> G: TX: итог + outbox
+G -> R: ACK задания после итога
+alt Получено корректное измерение
+  G -> R: MeasurementRecorded + PollCompleted (разные event_id)
+  R -> T: Измерение в очередь истории
+  T -> T: TX: сохранить по event_id; затем ACK
+  R -> S: То же измерение, независимая очередь
+  S -> D: Проверить сохранённого владельца при miss кэша
+  D --> S: Разрешение
+  S -> S: TX: inbox, свежесть, false → true / первое true,
+  note right of S: trigger + постоянный command_id + outbox
+  S -> D: SubmitScenarioCommand + служебный токен
+  D -> D: TX: текущие права, команда, acceptance_seq, outbox
+  D --> S: Принята; выполнение ещё не подтверждено
+  D -> R: CommandRequested + снимок конфигурации
+  R -> G: Задание команды
+  G -> G: TX: долговечный приём
+  G -> R: ACK ДО физического исполнения
+  G -> H: Команда при допустимом сроке и свободном устройстве
+  H --> G: Доказанный результат либо unknown
+  G -> G: TX: полный снимок результата + версия + outbox
+  G -> R: CommandStateChanged
+  R -> D: Полный снимок; повторы и перестановки допустимы
+  D -> D: TX: сравнить result_version, применить допустимый снимок
+  D -> R: ACK после commit
+else Нет измерения
+  G -> R: PollCompleted без выдуманного показания
+end
+R -> T: PollCompleted, отдельная очередь
+T -> T: TX: inbox + активный poll_job_id + расписание; затем ACK
+note over T,S
+  Порядок между очередями не гарантируется.
+  История может появиться позже срабатывания.
+  Полный результат новой версии не требует промежуточных событий.
+end note
+
+U -> E: GET /devices/{id}/commands/{command_id}
+E -> A: ValidateSession(audience=devices)
+A --> E: Контекст Devices
+E -> D: GetCommand + пользовательский контекст
+D --> E: Текущий статус, версия, причина
+E --> U: HTTP 200
+
+opt Давно нет результата опроса
+ T -> G: GetPollJob
+ G --> T: completed / pending / running / NOT_FOUND
+ T -> G: RepublishPollResult, только если итог сохранён
+ G -> G: TX: повторная публикация прежнего event_id через outbox
+ G --> T: publication_scheduled; это ещё не доставка
+ G -> R: Прежний PollCompleted, без нового опроса
+ R -> T: Обычный путь через inbox
+end
+footer Проектируемые контракты · docs/api/ · сервисы и оборудование не запущены
+@enduml

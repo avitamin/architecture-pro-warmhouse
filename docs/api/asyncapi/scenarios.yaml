@@ -1,0 +1,47 @@
+asyncapi: 3.0.0
+info:
+  title: scenarios — внутренние сообщения
+  version: 1.0.0
+  description: 'Проектируемый контракт. ACK/outbox и ограничения: ../contracts.md.
+    x-rabbitmq-binding документирует привязку очереди к exchange/routing key.'
+servers:
+  internal:
+    host: rabbitmq.warmhouse.example:5671
+    pathname: internal
+    protocol: amqps
+    security:
+    - $ref: '#/components/securitySchemes/broker'
+defaultContentType: application/json
+channels:
+  MeasurementRecorded:
+    address: wh.scenarios.measurements
+    messages:
+      MeasurementRecorded:
+        $ref: ./messages.yaml#/components/messages/MeasurementRecorded
+    bindings:
+      amqp:
+        is: queue
+        bindingVersion: 0.3.0
+        queue:
+          name: wh.scenarios.measurements
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: internal
+    description: Независимая очередь wh.scenarios.measurements
+    x-rabbitmq-binding:
+      exchange: wh.events.v1
+      routing_key: measurement.recorded
+operations:
+  receiveMeasurementRecorded:
+    action: receive
+    channel:
+      $ref: '#/channels/MeasurementRecorded'
+    messages:
+    - $ref: '#/channels/MeasurementRecorded/messages/MeasurementRecorded'
+    summary: Получить measurement.recorded
+components:
+  securitySchemes:
+    broker:
+      type: userPassword
+      description: Отдельные credentials/ACL роли; не служебный gRPC-токен.

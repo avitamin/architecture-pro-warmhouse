@@ -1,0 +1,1092 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Непрозрачный стабильный ID. Формат БД не задаётся."
+    },
+    "Instant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$",
+      "description": "RFC 3339, UTC с Z."
+    },
+    "Counter": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,18}$",
+      "description": "Положительный счётчик, не более uint64; JSON-строка для сохранения точности."
+    },
+    "Version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "Millis": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "Value": {
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "Parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      },
+      "required": [
+        "operation",
+        "arguments"
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "INVALID_ARGUMENT",
+            "UNAUTHENTICATED",
+            "PERMISSION_DENIED",
+            "NOT_FOUND",
+            "CONFLICT",
+            "VALIDATION_FAILED",
+            "UNAVAILABLE",
+            "DEADLINE_EXCEEDED",
+            "INTERNAL"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "request_id": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "request_id"
+      ]
+    },
+    "Capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "code": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "measurement",
+            "control",
+            "live_video"
+          ]
+        },
+        "value_type": {
+          "type": "string",
+          "enum": [
+            "number",
+            "boolean",
+            "text"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
+        "parameters_schema": {
+          "type": "object",
+          "description": "JSON Schema draft-07 для Parameters; обязательна для control."
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "kind"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "measurement"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value_type"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "control"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "parameters_schema"
+            ]
+          }
+        }
+      ]
+    },
+    "Device": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "house_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "type_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "registration_status": {
+          "type": "string",
+          "enum": [
+            "bound"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Capability"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "house_id",
+        "type_id",
+        "name",
+        "registration_status",
+        "capabilities"
+      ]
+    },
+    "Measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "value": {
+          "$ref": "#/definitions/Value"
+        },
+        "measured_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "gateway_received_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "event_id",
+        "device_id",
+        "capability_id",
+        "value",
+        "measured_at",
+        "gateway_received_at"
+      ]
+    },
+    "TelemetryPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Measurement"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "CommandInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "parameters": {
+          "$ref": "#/definitions/Parameters"
+        },
+        "expires_at": {
+          "$ref": "#/definitions/Instant"
+        }
+      },
+      "required": [
+        "command_id",
+        "capability_id",
+        "parameters",
+        "expires_at"
+      ]
+    },
+    "CommandStatus": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "queued",
+        "sent",
+        "succeeded",
+        "failed",
+        "unknown",
+        "expired",
+        "cancelled",
+        "rejected"
+      ]
+    },
+    "Command": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "user_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "scenario"
+          ]
+        },
+        "parameters": {
+          "$ref": "#/definitions/Parameters"
+        },
+        "expires_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "created_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "status": {
+          "$ref": "#/definitions/CommandStatus"
+        },
+        "acceptance_seq": {
+          "$ref": "#/definitions/Counter"
+        },
+        "result_version": {
+          "$ref": "#/definitions/Counter"
+        },
+        "state_changed_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "rule_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "rule_version": {
+          "$ref": "#/definitions/Version"
+        },
+        "trigger_id": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "command_id",
+        "device_id",
+        "capability_id",
+        "user_id",
+        "source",
+        "parameters",
+        "expires_at",
+        "created_at",
+        "status"
+      ]
+    },
+    "RuleInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "input_device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "input_capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "lt",
+            "lte",
+            "eq",
+            "neq",
+            "gte",
+            "gt"
+          ]
+        },
+        "threshold": {
+          "$ref": "#/definitions/Value"
+        },
+        "max_data_age_ms": {
+          "$ref": "#/definitions/Millis"
+        },
+        "target_device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "target_capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "action_parameters": {
+          "$ref": "#/definitions/Parameters"
+        },
+        "command_ttl_ms": {
+          "$ref": "#/definitions/Millis"
+        }
+      },
+      "required": [
+        "name",
+        "enabled",
+        "input_device_id",
+        "input_capability_id",
+        "operator",
+        "threshold",
+        "max_data_age_ms",
+        "target_device_id",
+        "target_capability_id",
+        "action_parameters",
+        "command_ttl_ms"
+      ]
+    },
+    "RuleUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "input_device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "input_capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "lt",
+            "lte",
+            "eq",
+            "neq",
+            "gte",
+            "gt"
+          ]
+        },
+        "threshold": {
+          "$ref": "#/definitions/Value"
+        },
+        "max_data_age_ms": {
+          "$ref": "#/definitions/Millis"
+        },
+        "target_device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "target_capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "action_parameters": {
+          "$ref": "#/definitions/Parameters"
+        },
+        "command_ttl_ms": {
+          "$ref": "#/definitions/Millis"
+        },
+        "expected_version": {
+          "$ref": "#/definitions/Version"
+        }
+      },
+      "required": [
+        "name",
+        "enabled",
+        "input_device_id",
+        "input_capability_id",
+        "operator",
+        "threshold",
+        "max_data_age_ms",
+        "target_device_id",
+        "target_capability_id",
+        "action_parameters",
+        "command_ttl_ms",
+        "expected_version"
+      ]
+    },
+    "Rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "input_device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "input_capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "lt",
+            "lte",
+            "eq",
+            "neq",
+            "gte",
+            "gt"
+          ]
+        },
+        "threshold": {
+          "$ref": "#/definitions/Value"
+        },
+        "max_data_age_ms": {
+          "$ref": "#/definitions/Millis"
+        },
+        "target_device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "target_capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "action_parameters": {
+          "$ref": "#/definitions/Parameters"
+        },
+        "command_ttl_ms": {
+          "$ref": "#/definitions/Millis"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "owner_user_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "version": {
+          "$ref": "#/definitions/Version"
+        },
+        "activated_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "initial_evaluated": {
+          "type": "boolean"
+        },
+        "last_condition_met": {
+          "type": "boolean"
+        },
+        "last_value": {
+          "$ref": "#/definitions/Value"
+        },
+        "last_measured_at": {
+          "$ref": "#/definitions/Instant"
+        }
+      },
+      "required": [
+        "name",
+        "enabled",
+        "input_device_id",
+        "input_capability_id",
+        "operator",
+        "threshold",
+        "max_data_age_ms",
+        "target_device_id",
+        "target_capability_id",
+        "action_parameters",
+        "command_ttl_ms",
+        "id",
+        "owner_user_id",
+        "version",
+        "initial_evaluated"
+      ]
+    },
+    "Trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "rule_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "rule_version": {
+          "$ref": "#/definitions/Version"
+        },
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "triggered_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "command_id": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "id",
+        "rule_id",
+        "rule_version",
+        "event_id",
+        "triggered_at",
+        "command_id"
+      ]
+    },
+    "TriggerPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Trigger"
+          }
+        },
+        "next_cursor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "ConfigSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "config_version": {
+          "$ref": "#/definitions/Version"
+        },
+        "adapter_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issued_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "valid_until": {
+          "$ref": "#/definitions/Instant"
+        },
+        "value_type": {
+          "type": "string",
+          "enum": [
+            "number",
+            "boolean",
+            "text"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "device_id",
+        "capability_id",
+        "config_version",
+        "adapter_key",
+        "endpoint_key",
+        "channel",
+        "issued_at",
+        "valid_until"
+      ]
+    },
+    "PollRequested": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "type": {
+          "const": "poll.requested"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "occurred_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "poll_job_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "expires_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "config": {
+          "$ref": "#/definitions/ConfigSnapshot"
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "schema_version",
+        "occurred_at",
+        "poll_job_id",
+        "device_id",
+        "capability_id",
+        "expires_at",
+        "config"
+      ]
+    },
+    "PollCompleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "type": {
+          "const": "poll.completed"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "occurred_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "poll_job_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "timeout",
+            "failed",
+            "expired",
+            "interrupted"
+          ]
+        },
+        "measurement_event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "schema_version",
+        "occurred_at",
+        "poll_job_id",
+        "device_id",
+        "capability_id",
+        "outcome"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "measurement_event_id"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "measurement_event_id"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "MeasurementRecorded": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "type": {
+          "const": "measurement.recorded"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "occurred_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "poll_job_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "value": {
+          "$ref": "#/definitions/Value"
+        },
+        "measured_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "gateway_received_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "schema_version",
+        "occurred_at",
+        "poll_job_id",
+        "device_id",
+        "capability_id",
+        "value",
+        "measured_at",
+        "gateway_received_at"
+      ]
+    },
+    "CommandRequested": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "type": {
+          "const": "command.requested"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "occurred_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "command_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "user_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "scenario"
+          ]
+        },
+        "parameters": {
+          "$ref": "#/definitions/Parameters"
+        },
+        "acceptance_seq": {
+          "$ref": "#/definitions/Counter"
+        },
+        "expires_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "config": {
+          "$ref": "#/definitions/ConfigSnapshot"
+        },
+        "rule_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "rule_version": {
+          "$ref": "#/definitions/Version"
+        },
+        "trigger_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "causation_event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "manual_cancel_before_seq": {
+          "$ref": "#/definitions/Counter"
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "schema_version",
+        "occurred_at",
+        "command_id",
+        "device_id",
+        "capability_id",
+        "user_id",
+        "source",
+        "parameters",
+        "acceptance_seq",
+        "expires_at",
+        "config"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "scenario"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "rule_id",
+              "rule_version",
+              "trigger_id",
+              "causation_event_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "manual"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "manual_cancel_before_seq"
+            ]
+          }
+        }
+      ]
+    },
+    "CommandStateChanged": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "type": {
+          "const": "command.state_changed"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "occurred_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "command_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "device_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "capability_id": {
+          "$ref": "#/definitions/Id"
+        },
+        "result_version": {
+          "$ref": "#/definitions/Counter"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "sent",
+            "succeeded",
+            "failed",
+            "unknown",
+            "expired",
+            "cancelled"
+          ]
+        },
+        "state_changed_at": {
+          "$ref": "#/definitions/Instant"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "evidence": {
+          "type": "string",
+          "enum": [
+            "none",
+            "operation_completed",
+            "operation_failed",
+            "not_executed"
+          ]
+        }
+      },
+      "required": [
+        "event_id",
+        "type",
+        "schema_version",
+        "occurred_at",
+        "command_id",
+        "device_id",
+        "capability_id",
+        "result_version",
+        "status",
+        "state_changed_at",
+        "reason_code",
+        "evidence"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "queued"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason_code": {
+                "const": "QUEUED"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "sent"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason_code": {
+                "const": "SENT"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

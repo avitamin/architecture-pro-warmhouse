@@ -1,0 +1,1292 @@
+openapi: 3.1.1
+info:
+  title: 'Умный дом: телеметрия и управление'
+  version: 1.0.0
+  description: 'Проектируемый API. Реализации нет. Семантика, ошибки, gRPC и сценарии: README.md и contracts.md.'
+servers:
+- url: https://api.warmhouse.example/api/v1
+  description: Документационный адрес; сервер не развёрнут
+security:
+- session: []
+tags:
+- name: Devices
+  description: Устройства, история и команды
+- name: Scenarios
+  description: Правила и срабатывания
+paths:
+  /devices/{device_id}:
+    get:
+      operationId: getDevice
+      summary: Получить устройство и его возможности
+      tags:
+      - Devices
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: dev-thermostat
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Device
+              examples:
+                normal:
+                  value:
+                    id: dev-thermostat
+                    house_id: house-home
+                    type_id: type-thermostat
+                    name: Термостат гостиной
+                    registration_status: bound
+                    capabilities:
+                    - id: cap-temperature
+                      code: temperature
+                      kind: measurement
+                      value_type: number
+                      unit: Cel
+                    - id: cap-heating
+                      code: heating
+                      kind: control
+                      parameters_schema:
+                        type: object
+                        additionalProperties: false
+                        properties:
+                          operation:
+                            const: set
+                          arguments:
+                            type: object
+                            additionalProperties: false
+                            properties:
+                              enabled:
+                                type: boolean
+                            required:
+                            - enabled
+                        required:
+                        - operation
+                        - arguments
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+  /devices/{device_id}/telemetry:
+    get:
+      operationId: listTelemetry
+      summary: Прочитать сохранённую историю, без опроса оборудования
+      tags:
+      - Devices
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: dev-thermostat
+      - name: capability_id
+        in: query
+        required: false
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Возможность этого устройства
+        examples:
+          normal:
+            value: cap-temperature
+      - name: from
+        in: query
+        required: false
+        schema:
+          $ref: ./schemas.json#/definitions/Instant
+        description: Включительная нижняя граница measured_at
+        examples:
+          normal:
+            value: '2026-10-21T10:00:00Z'
+      - name: to
+        in: query
+        required: false
+        schema:
+          $ref: ./schemas.json#/definitions/Instant
+        description: Исключительная верхняя граница measured_at
+        examples:
+          normal:
+            value: '2026-10-21T11:00:00Z'
+      - &id003
+        name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+        description: Размер страницы
+        examples:
+          normal:
+            value: 100
+      - &id004
+        name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Непрозрачный курсор из предыдущего ответа; привязан к фильтрам и пользователю
+        examples:
+          normal:
+            value: opaque-cursor-from-previous-page
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/TelemetryPage
+              examples:
+                normal:
+                  value:
+                    items:
+                    - id: measurement-1
+                      event_id: evt-measurement-1
+                      device_id: dev-thermostat
+                      capability_id: cap-temperature
+                      value: 17
+                      measured_at: '2026-10-21T10:00:01Z'
+                      gateway_received_at: '2026-10-21T10:00:02Z'
+                      unit: Cel
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+  /devices/{device_id}/commands:
+    post:
+      operationId: submitCommand
+      summary: Принять ручную команду
+      tags:
+      - Devices
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: dev-thermostat
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+        description: Токен синхронизатора, связанный с сессией; не сохраняется в outbox.
+        examples:
+          normal:
+            value: csrf-token-from-session
+      responses:
+        '202':
+          description: Принята к обработке; выполнение не подтверждено
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Command
+              examples:
+                normal:
+                  value: &id001
+                    command_id: cmd-manual-1
+                    capability_id: cap-heating
+                    parameters: &id002
+                      operation: set
+                      arguments:
+                        enabled: true
+                    expires_at: '2026-10-21T10:00:30Z'
+                    device_id: dev-thermostat
+                    user_id: user-1
+                    source: manual
+                    created_at: '2026-10-21T10:00:05Z'
+                    status: accepted
+                    acceptance_seq: '41'
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URI чтения команды
+        '200':
+          description: Повтор идентичного ранее принятого запроса; текущее состояние без нового задания
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Command
+              examples:
+                normal:
+                  value: *id001
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+        '409':
+          description: Конфликт идентификатора или версии
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: CONFLICT
+                    message: Конфликт идентификатора или версии
+                    retryable: false
+                    request_id: req-1
+        '422':
+          description: Недопустимые параметры операции
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: Недопустимые параметры операции
+                    retryable: false
+                    request_id: req-1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas.json#/definitions/CommandInput
+            examples:
+              normal:
+                value:
+                  command_id: cmd-manual-1
+                  capability_id: cap-heating
+                  parameters: *id002
+                  expires_at: '2026-10-21T10:00:30Z'
+  /devices/{device_id}/commands/{command_id}:
+    get:
+      operationId: getCommand
+      summary: Получить состояние команды
+      tags:
+      - Devices
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: dev-thermostat
+      - name: command_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: cmd-manual-1
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Command
+              examples:
+                normal:
+                  value: *id001
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+  /automation-rules:
+    post:
+      operationId: createRule
+      summary: Создать правило
+      tags:
+      - Scenarios
+      parameters:
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+        description: Токен синхронизатора, связанный с сессией; не сохраняется в outbox.
+        examples:
+          normal:
+            value: csrf-token-from-session
+      responses:
+        '201':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Rule
+              examples:
+                normal:
+                  value:
+                    name: Включить отопление ниже 18 °C
+                    enabled: true
+                    input_device_id: dev-thermostat
+                    input_capability_id: cap-temperature
+                    operator: lt
+                    threshold: 18
+                    max_data_age_ms: 60000
+                    target_device_id: dev-thermostat
+                    target_capability_id: cap-heating
+                    action_parameters:
+                      operation: set
+                      arguments:
+                        enabled: true
+                    command_ttl_ms: 30000
+                    id: rule-heat
+                    owner_user_id: user-1
+                    version: 1
+                    activated_at: '2026-10-21T10:00:00Z'
+                    initial_evaluated: false
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URI созданного правила
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+        '422':
+          description: Недопустимые параметры операции
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: Недопустимые параметры операции
+                    retryable: false
+                    request_id: req-1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas.json#/definitions/RuleInput
+            examples:
+              normal:
+                value:
+                  name: Включить отопление ниже 18 °C
+                  enabled: true
+                  input_device_id: dev-thermostat
+                  input_capability_id: cap-temperature
+                  operator: lt
+                  threshold: 18
+                  max_data_age_ms: 60000
+                  target_device_id: dev-thermostat
+                  target_capability_id: cap-heating
+                  action_parameters: *id002
+                  command_ttl_ms: 30000
+  /automation-rules/{rule_id}:
+    get:
+      operationId: getRule
+      summary: Прочитать правило
+      tags:
+      - Scenarios
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: rule-heat
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Rule
+              examples:
+                normal:
+                  value:
+                    name: Включить отопление ниже 18 °C
+                    enabled: true
+                    input_device_id: dev-thermostat
+                    input_capability_id: cap-temperature
+                    operator: lt
+                    threshold: 18
+                    max_data_age_ms: 60000
+                    target_device_id: dev-thermostat
+                    target_capability_id: cap-heating
+                    action_parameters:
+                      operation: set
+                      arguments:
+                        enabled: true
+                    command_ttl_ms: 30000
+                    id: rule-heat
+                    owner_user_id: user-1
+                    version: 1
+                    activated_at: '2026-10-21T10:00:00Z'
+                    initial_evaluated: false
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+    put:
+      operationId: updateRule
+      summary: Заменить конфигурацию правила с проверкой версии
+      tags:
+      - Scenarios
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: rule-heat
+      - name: X-CSRF-Token
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+        description: Токен синхронизатора, связанный с сессией; не сохраняется в outbox.
+        examples:
+          normal:
+            value: csrf-token-from-session
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Rule
+              examples:
+                normal:
+                  value:
+                    name: Включить отопление ниже 18 °C
+                    enabled: false
+                    input_device_id: dev-thermostat
+                    input_capability_id: cap-temperature
+                    operator: lt
+                    threshold: 18
+                    max_data_age_ms: 60000
+                    target_device_id: dev-thermostat
+                    target_capability_id: cap-heating
+                    action_parameters: *id002
+                    command_ttl_ms: 30000
+                    id: rule-heat
+                    owner_user_id: user-1
+                    version: 2
+                    activated_at: '2026-10-21T10:00:00Z'
+                    initial_evaluated: false
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+        '409':
+          description: Конфликт идентификатора или версии
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: CONFLICT
+                    message: Конфликт идентификатора или версии
+                    retryable: false
+                    request_id: req-1
+        '422':
+          description: Недопустимые параметры операции
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: Недопустимые параметры операции
+                    retryable: false
+                    request_id: req-1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./schemas.json#/definitions/RuleUpdate
+            examples:
+              normal:
+                value:
+                  name: Включить отопление ниже 18 °C
+                  enabled: false
+                  input_device_id: dev-thermostat
+                  input_capability_id: cap-temperature
+                  operator: lt
+                  threshold: 18
+                  max_data_age_ms: 60000
+                  target_device_id: dev-thermostat
+                  target_capability_id: cap-heating
+                  action_parameters: *id002
+                  command_ttl_ms: 30000
+                  expected_version: 1
+  /automation-rules/{rule_id}/triggers:
+    get:
+      operationId: listTriggers
+      summary: Прочитать историю срабатываний
+      tags:
+      - Scenarios
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          $ref: ./schemas.json#/definitions/Id
+        description: Идентификатор ресурса
+        examples:
+          normal:
+            value: rule-heat
+      - *id003
+      - *id004
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/TriggerPage
+              examples:
+                normal:
+                  value:
+                    items:
+                    - id: trigger-1
+                      rule_id: rule-heat
+                      rule_version: 1
+                      event_id: evt-measurement-1
+                      triggered_at: '2026-10-21T10:00:03Z'
+                      command_id: cmd-auto-1
+        '400':
+          description: Некорректный JSON или параметры
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INVALID_ARGUMENT
+                    message: Некорректный JSON или параметры
+                    retryable: false
+                    request_id: req-1
+        '401':
+          description: Сессия недействительна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAUTHENTICATED
+                    message: Сессия недействительна
+                    retryable: false
+                    request_id: req-1
+        '403':
+          description: Нет доступа или CSRF-проверка не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: PERMISSION_DENIED
+                    message: Нет доступа или CSRF-проверка не пройдена
+                    retryable: false
+                    request_id: req-1
+        '404':
+          description: Ресурс не найден
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: NOT_FOUND
+                    message: Ресурс не найден
+                    retryable: false
+                    request_id: req-1
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: INTERNAL
+                    message: Внутренняя ошибка
+                    retryable: false
+                    request_id: req-1
+        '503':
+          description: Зависимость временно недоступна
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: UNAVAILABLE
+                    message: Зависимость временно недоступна
+                    retryable: true
+                    request_id: req-1
+        '504':
+          description: Результат запроса неизвестен из-за таймаута
+          content:
+            application/json:
+              schema:
+                $ref: ./schemas.json#/definitions/Error
+              examples:
+                normal:
+                  value:
+                    code: DEADLINE_EXCEEDED
+                    message: Результат запроса неизвестен из-за таймаута
+                    retryable: true
+                    request_id: req-1
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Host-warmhouse_session
+      description: Secure; HttpOnly; SameSite=Lax; Path=/; без Domain. CSRF на изменяющих запросах.

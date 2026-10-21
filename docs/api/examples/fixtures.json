@@ -1,0 +1,261 @@
+{
+  "Device": {
+    "id": "dev-thermostat",
+    "house_id": "house-home",
+    "type_id": "type-thermostat",
+    "name": "Термостат гостиной",
+    "registration_status": "bound",
+    "capabilities": [
+      {
+        "id": "cap-temperature",
+        "code": "temperature",
+        "kind": "measurement",
+        "value_type": "number",
+        "unit": "Cel"
+      },
+      {
+        "id": "cap-heating",
+        "code": "heating",
+        "kind": "control",
+        "parameters_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "const": "set"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ]
+            }
+          },
+          "required": [
+            "operation",
+            "arguments"
+          ]
+        }
+      }
+    ]
+  },
+  "CommandInput": {
+    "command_id": "cmd-manual-1",
+    "capability_id": "cap-heating",
+    "parameters": {
+      "operation": "set",
+      "arguments": {
+        "enabled": true
+      }
+    },
+    "expires_at": "2026-10-21T10:00:30Z"
+  },
+  "Command": {
+    "command_id": "cmd-manual-1",
+    "capability_id": "cap-heating",
+    "parameters": {
+      "operation": "set",
+      "arguments": {
+        "enabled": true
+      }
+    },
+    "expires_at": "2026-10-21T10:00:30Z",
+    "device_id": "dev-thermostat",
+    "user_id": "user-1",
+    "source": "manual",
+    "created_at": "2026-10-21T10:00:05Z",
+    "status": "accepted",
+    "acceptance_seq": "41"
+  },
+  "RuleInput": {
+    "name": "Включить отопление ниже 18 °C",
+    "enabled": true,
+    "input_device_id": "dev-thermostat",
+    "input_capability_id": "cap-temperature",
+    "operator": "lt",
+    "threshold": 18,
+    "max_data_age_ms": 60000,
+    "target_device_id": "dev-thermostat",
+    "target_capability_id": "cap-heating",
+    "action_parameters": {
+      "operation": "set",
+      "arguments": {
+        "enabled": true
+      }
+    },
+    "command_ttl_ms": 30000
+  },
+  "RuleUpdate": {
+    "name": "Включить отопление ниже 18 °C",
+    "enabled": false,
+    "input_device_id": "dev-thermostat",
+    "input_capability_id": "cap-temperature",
+    "operator": "lt",
+    "threshold": 18,
+    "max_data_age_ms": 60000,
+    "target_device_id": "dev-thermostat",
+    "target_capability_id": "cap-heating",
+    "action_parameters": {
+      "operation": "set",
+      "arguments": {
+        "enabled": true
+      }
+    },
+    "command_ttl_ms": 30000,
+    "expected_version": 1
+  },
+  "Rule": {
+    "name": "Включить отопление ниже 18 °C",
+    "enabled": true,
+    "input_device_id": "dev-thermostat",
+    "input_capability_id": "cap-temperature",
+    "operator": "lt",
+    "threshold": 18,
+    "max_data_age_ms": 60000,
+    "target_device_id": "dev-thermostat",
+    "target_capability_id": "cap-heating",
+    "action_parameters": {
+      "operation": "set",
+      "arguments": {
+        "enabled": true
+      }
+    },
+    "command_ttl_ms": 30000,
+    "id": "rule-heat",
+    "owner_user_id": "user-1",
+    "version": 1,
+    "activated_at": "2026-10-21T10:00:00Z",
+    "initial_evaluated": false
+  },
+  "TelemetryPage": {
+    "items": [
+      {
+        "id": "measurement-1",
+        "event_id": "evt-measurement-1",
+        "device_id": "dev-thermostat",
+        "capability_id": "cap-temperature",
+        "value": 17,
+        "measured_at": "2026-10-21T10:00:01Z",
+        "gateway_received_at": "2026-10-21T10:00:02Z",
+        "unit": "Cel"
+      }
+    ]
+  },
+  "TriggerPage": {
+    "items": [
+      {
+        "id": "trigger-1",
+        "rule_id": "rule-heat",
+        "rule_version": 1,
+        "event_id": "evt-measurement-1",
+        "triggered_at": "2026-10-21T10:00:03Z",
+        "command_id": "cmd-auto-1"
+      }
+    ]
+  },
+  "Error": {
+    "code": "NOT_FOUND",
+    "message": "Ресурс не найден",
+    "retryable": false,
+    "request_id": "req-1"
+  },
+  "PollRequested": {
+    "event_id": "evt-poll-request-1",
+    "type": "poll.requested",
+    "schema_version": 1,
+    "occurred_at": "2026-10-21T10:00:00Z",
+    "poll_job_id": "poll-1",
+    "device_id": "dev-thermostat",
+    "capability_id": "cap-temperature",
+    "expires_at": "2026-10-21T10:00:10Z",
+    "config": {
+      "device_id": "dev-thermostat",
+      "capability_id": "cap-temperature",
+      "config_version": 1,
+      "adapter_key": "partner-thermostat",
+      "endpoint_key": "registered-endpoint-1",
+      "channel": "temperature",
+      "issued_at": "2026-10-21T10:00:00Z",
+      "valid_until": "2026-10-21T10:05:00Z",
+      "value_type": "number",
+      "unit": "Cel"
+    }
+  },
+  "PollCompleted": {
+    "event_id": "evt-poll-result-1",
+    "type": "poll.completed",
+    "schema_version": 1,
+    "occurred_at": "2026-10-21T10:00:02Z",
+    "poll_job_id": "poll-1",
+    "device_id": "dev-thermostat",
+    "capability_id": "cap-temperature",
+    "outcome": "succeeded",
+    "measurement_event_id": "evt-measurement-1"
+  },
+  "MeasurementRecorded": {
+    "event_id": "evt-measurement-1",
+    "type": "measurement.recorded",
+    "schema_version": 1,
+    "occurred_at": "2026-10-21T10:00:02Z",
+    "device_id": "dev-thermostat",
+    "capability_id": "cap-temperature",
+    "value": 17,
+    "measured_at": "2026-10-21T10:00:01Z",
+    "gateway_received_at": "2026-10-21T10:00:02Z",
+    "unit": "Cel",
+    "poll_job_id": "poll-1"
+  },
+  "CommandRequested": {
+    "event_id": "evt-command-request-1",
+    "type": "command.requested",
+    "schema_version": 1,
+    "occurred_at": "2026-10-21T10:00:03Z",
+    "command_id": "cmd-auto-1",
+    "device_id": "dev-thermostat",
+    "capability_id": "cap-heating",
+    "user_id": "user-1",
+    "source": "scenario",
+    "parameters": {
+      "operation": "set",
+      "arguments": {
+        "enabled": true
+      }
+    },
+    "acceptance_seq": "40",
+    "expires_at": "2026-10-21T10:00:33Z",
+    "config": {
+      "device_id": "dev-thermostat",
+      "capability_id": "cap-heating",
+      "config_version": 1,
+      "adapter_key": "partner-thermostat",
+      "endpoint_key": "registered-endpoint-1",
+      "channel": "heating",
+      "issued_at": "2026-10-21T10:00:00Z",
+      "valid_until": "2026-10-21T10:05:00Z"
+    },
+    "rule_id": "rule-heat",
+    "rule_version": 1,
+    "trigger_id": "trigger-1",
+    "causation_event_id": "evt-measurement-1"
+  },
+  "CommandStateChanged": {
+    "event_id": "evt-command-result-3",
+    "type": "command.state_changed",
+    "schema_version": 1,
+    "occurred_at": "2026-10-21T10:00:04Z",
+    "command_id": "cmd-auto-1",
+    "device_id": "dev-thermostat",
+    "capability_id": "cap-heating",
+    "result_version": "3",
+    "status": "succeeded",
+    "state_changed_at": "2026-10-21T10:00:04Z",
+    "reason_code": "COMPLETED",
+    "evidence": "operation_completed"
+  }
+}

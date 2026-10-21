@@ -1,0 +1,23 @@
+{
+  "name": "warmhouse-api-docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Валидация и локальное представление проектируемых API",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
+    "@asyncapi/parser": "3.6.6",
+    "@asyncapi/react-component": "3.2.2",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "swagger-ui-dist": "5.34.0",
+    "yaml": "2.8.1",
+    "@apidevtools/json-schema-ref-parser": "16.0.5"
+  }
+}

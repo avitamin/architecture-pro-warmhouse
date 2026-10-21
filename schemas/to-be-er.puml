@@ -82,6 +82,7 @@ package "Devices · дома и оборудование" as DevicesContext #EAF
     * status : CommandState
     result_version : Integer
     * created_at : InstantUTC
+    * expires_at : InstantUTC
   }
 }
 
@@ -115,6 +116,7 @@ package "Scenarios" as ScenariosContext #F2EBF9 {
     -- одно действие --
     * target_capability_id : ID <<REF DeviceCapability>>
     * action_parameters : Parameters
+    * command_ttl : Duration
     -- состояние текущей версии --
     * initial_evaluated : Boolean
     last_condition_met : Boolean
