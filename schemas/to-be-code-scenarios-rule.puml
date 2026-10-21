@@ -1,0 +1,71 @@
+@startuml to-be-code-scenarios-rule
+!pragma layout smetana
+left to right direction
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam wrapWidth 170
+skinparam nodesep 35
+skinparam ranksep 65
+hide empty members
+hide circle
+skinparam classBackgroundColor #EAF3FF
+title Умный дом — To-Be · C4 Code · Scenarios / обработка одного правила · Python
+class "MeasurementConsumer" as consumer <<внешний компонент>> #EEEEEE
+class "RuleProcessor" as proc <<Python class>> {
+ +process(rule_id, measurement)
+}
+class "AccessClient" as access <<gRPC / cache adapter>> {
+ +check_saved_owner(rule)
+}
+class "RuleStore" as store <<SQL adapter>> {
+ +read_candidate(rule_id)
+ +apply_under_lock(rule_id, version, sample, access)
+}
+class "evaluate(rule, state, sample)" as evaluate <<pure function>> {
+ -> Decision
+}
+class "RuleState" as state <<dataclass>> {
+ rule_id; version; enabled
+ owner_id; last_measured_at
+ initialized; previous_condition
+}
+class "Decision" as decision <<dataclass>> {
+ ignored / update_state / trigger
+ next_state; command
+}
+class "Rules API" as api <<внешний компонент>> #EEEEEE
+class "Scenarios command relay" as relay <<внешний компонент>> #EEEEEE
+consumer --> proc : каждое применимое правило
+proc --> store : прочитать версию-кандидат
+proc --> access : до SQL-блокировки
+proc --> store : применить только к проверенной версии
+store --> evaluate : после FOR UPDATE и проверки inbox
+store ..> state : читает / изменяет
+state <-- evaluate : вход
+ evaluate ..> decision : результат вычисления
+api ..> store : редактирование / отключение\nпод той же блокировкой
+relay ..> store : читает outbox после commit\nвызывает Devices вне TX
+note bottom of store
+  Изменились версия / владелец / доступность правила —
+  не применять старую проверку; перечитать и проверить снова.
+  Inbox на правило + событие, состояние, срабатывание и outbox
+  фиксируются одной короткой транзакцией.
+  Повтор пропускает уже обработанные правила.
+  AMQP ACK — только после обработки всех применимых правил.
+end note
+note bottom of evaluate
+  Принимаются только более новые и свежие измерения.
+  Первое свежее true новой версии → действие; далее false → true.
+  Перезапуск не создаёт новую версию и повторное действие.
+  Несвежее измерение не меняет прежнее состояние условия.
+  Одна команда с постоянным command_id на срабатывание.
+  Relay использует сохранённого владельца и служебный контракт.
+  OTel: причина измерения / правило / исход; без rule_id в метках метрик.
+end note
+
+legend bottom
+Проектируемые элементы; реализации нет. Голубые — внутри компонента; серые — соседи.
+Сплошная стрелка — вызов / зависимость; пунктир — использование данных или связь с соседним компонентом.
+endlegend
+@enduml

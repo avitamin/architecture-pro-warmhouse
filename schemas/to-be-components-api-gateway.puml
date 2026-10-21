@@ -1,0 +1,38 @@
+@startuml to-be-components-api-gateway
+!pragma layout smetana
+!include <C4/C4_Component>
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam wrapWidth 170
+skinparam nodesep 35
+skinparam ranksep 60
+LAYOUT_LEFT_RIGHT()
+title Умный дом — To-Be · C4 Components · API Gateway
+Container(web, "Веб-приложение", "HTTPS / JSON", "Показания, команды, правила и управление просмотром")
+Container(users, "Users", "C# / ASP.NET Core gRPC", "Сессия и токен адресата")
+Container(targets, "Devices / Telemetry / Scenarios / Video", "gRPC/TLS", "Права и предметные операции")
+Container_Boundary(edge, "API Gateway · PHP / Laravel · приложение на один запрос") {
+ Component(http, "HTTP-вход и маршруты", "Laravel HTTP", "Входные данные и HTTP-ответ")
+ Component(session, "Защита запроса", "Laravel middleware + gRPC client", "Cookie/CSRF; Users на каждый защищённый запрос; без кэша сессий")
+ Component(mapping, "Контроллеры и отображение", "Laravel controllers / PHP services", "JSON ↔ protobuf; статусы и ошибки; без предметной БД")
+ Component(client, "Клиенты сервисов", "PHP gRPC client", "Токен для адресата и отдельная служебная аутентификация; сроки вызовов")
+ Component(obs, "Диагностика запроса", "OTel + structured logging + metrics", "Корреляция; очистка секретов; ограниченный экспорт при завершении запроса")
+}
+BiRel(web, http, "Все пользовательские запросы и ответы", "HTTPS / JSON")
+Rel(http, session, "Защищённый запрос")
+Rel(session, users, "Сессия → контекст адресата", "gRPC/TLS")
+Rel(session, mapping, "Проверенный запрос")
+BiRel(mapping, client, "Преобразование запроса / ответа")
+BiRel(client, targets, "Предметный вызов / результат", "gRPC/TLS")
+Rel(http, obs, "Вход и исход HTTP")
+Rel(client, obs, "Контекст и исход gRPC")
+note bottom of mapping
+  Ответы телеметрии проходят обратно через API Gateway.
+  Долговечного задания или медиапотока в Gateway нет.
+  Отображение ошибок и protobuf-контракты уточняются в задании 4.
+  HTTP-сервер и граница поставки Laravel открыты (Twelve-Factor VII).
+end note
+SHOW_LEGEND()
+
+footer Проектируемая архитектура · код сервисов не реализован · детали контрактов уточняются
+@enduml

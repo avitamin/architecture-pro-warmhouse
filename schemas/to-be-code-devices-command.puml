@@ -1,0 +1,74 @@
+@startuml to-be-code-devices-command
+!pragma layout smetana
+left to right direction
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam wrapWidth 170
+skinparam nodesep 35
+skinparam ranksep 65
+hide empty members
+hide circle
+skinparam classBackgroundColor #EAF3FF
+title Умный дом — To-Be · C4 Code · Devices / приём команд · Kotlin + Spring Boot
+class "gRPC handler" as grpc <<внешний компонент>> #EEEEEE
+class "CommandService" as svc <<Spring service>> {
+ +accept(command, verifiedContext): Acceptance
+}
+class "CommandPolicy" as policy <<Kotlin class>> {
+ +checkOwnerAndCapability(command, context, deviceState)
+ +checkAllowedAction(command)
+}
+class "CommandTransaction" as tx <<Spring transactional service>> {
+ +acceptWithOutbox(command, verifiedContext): Acceptance
+}
+class "CommandRepository" as repo <<SQL adapter>> {
+ +findById(commandId)
+ +readCurrentDeviceState(deviceId)
+ +compareContentAndOwner(command)
+ +allocateOrderAndInsert(command)
+ +insertOutbox(command, traceContext)
+}
+class "AcceptedCommand" as model <<Kotlin data class>> {
+ commandId; deviceId; ownerId
+ origin; acceptedOrder; content
+}
+class "Acceptance" as result <<Kotlin result type>> {
+ new / existing / conflict
+ savedCommandState
+}
+class "Devices outbox relay" as relay <<внешний компонент>> #EEEEEE
+grpc --> svc : проверенный caller / контекст
+svc --> tx : проверенный контекст и команда
+tx --> policy : локальные проверки текущего состояния\nв транзакции принятия
+tx --> repo : одна локальная транзакция
+repo ..> model : сохраняет
+tx ..> result : новое / прежнее / конфликт
+relay ..> repo : читает сохранённый outbox\nпубликует вне транзакции приёма
+note bottom of tx
+  Конкурентные повторы command_id согласуются атомарно.
+  Тот же владелец и содержание → прежняя команда;
+  отличающееся содержание → конфликт, без нового задания.
+  Команда + порядок принятия + outbox — один commit.
+  Проверка текущего владельца / возможностей и приём атомарны:
+  конкурентное изменение не проходит между проверкой и commit.
+  Порядок разных command_id одного устройства сериализуется;
+  повтор не получает новый номер.
+  При сбое транзакции «принята» не возвращается.
+  Точная SQL-реализация и ORM ещё не выбраны.
+end note
+note bottom of svc
+  Spring связывает зависимости и границу транзакции;
+  имена классов — проектируемые, не существующие исходники.
+  Сеть и публикация AMQP не входят в SQL-транзакцию.
+  «Принята» не означает физическое выполнение.
+  Отмена до исполнения и версии исхода — ответственность шлюза;
+  компонент результатов Devices применяет допустимую версию.
+  OTel: приём / commit / исход; trace context сохраняется в outbox.
+end note
+
+legend bottom
+Проектируемые элементы; реализации нет. Голубые — внутри компонента; серые — соседи.
+Сплошная стрелка — вызов / зависимость; пунктир — использование данных или связь с соседним компонентом.
+endlegend
+@enduml

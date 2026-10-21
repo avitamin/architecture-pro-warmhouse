@@ -1,0 +1,76 @@
+@startuml to-be-code-telemetry-scheduler
+!pragma layout smetana
+left to right direction
+skinparam defaultFontName SansSerif
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam wrapWidth 170
+skinparam nodesep 35
+skinparam ranksep 65
+hide empty members
+hide circle
+skinparam classBackgroundColor #EAF3FF
+title Умный дом — To-Be · C4 Code · Telemetry / планировщик · Go + gRPC-Go
+class "runScheduler(ctx)" as run <<Go function>> {
+ config; SQL pool; logger; tracer; metrics
+}
+class "Scheduler" as sched <<Go struct>> {
+ +Tick(ctx, now)
+}
+class "ConfigSnapshot" as config <<Go struct>> {
+ +Ready(): bool
+ +Current(deviceID)
+}
+class "ScheduleStore" as store <<Go SQL adapter>> {
+ +EnqueueDue(ctx, now): BatchOutcome
+ +ReadStoredConfig(tx, deviceID)
+}
+class "PollSchedule" as state <<Go struct>> {
+ deviceID; nextDueAt; activeJobID
+ configurationVersion; backoff
+}
+class "PollJob" as job <<Go struct>> {
+ jobID; deviceID; deadline
+ traceContext
+}
+class "OutboxRecord" as outbox <<Go struct>> {
+ eventID; jobID; destination
+ payload; traceContext
+}
+class "Configuration loader" as loader <<внешний компонент>> #EEEEEE
+class "Results inbox worker" as results <<внешний компонент>> #EEEEEE
+class "Telemetry outbox relay" as relay <<внешний компонент>> #EEEEEE
+run --> sched : создаёт зависимости; запускает / останавливает
+sched --> config : готовность восстановленного снимка
+loader --> config : gRPC Devices; сохранить и обновить
+sched --> store : короткая транзакция для порции
+store ..> state : читает / обновляет
+store ..> job : создаёт задание
+store ..> outbox : сохраняет в той же TX
+results ..> state : через собственную TX:\ninbox + итог + активность + расписание
+relay ..> outbox : AMQP; повтор сохраняет ID
+note bottom of store
+  SKIP LOCKED выбирает готовые строки без долгого ожидания.
+  При записи задания читает конфигурацию из своей схемы Telemetry
+  и проверяет её версию в той же TX; не из кэша ConfigSnapshot.
+  Это локальная версия; свежесть относительно Devices уточняется.
+  Одно активное задание на прибор; интервалы не накапливаются.
+  job + activeJobID + nextDueAt + outbox — один commit.
+  При активном задании новый опрос не создаётся.
+  Нет сети внутри блокировки; после commit работает relay.
+end note
+note bottom of sched
+  Локальный снимок восстанавливается перед работой.
+  Нет собственного веб-фреймворка или общего каркаса.
+  При остановке не берём новые порции; завершение ограничено.
+  Опрос прибора выполняет Integration Gateway.
+  Сохранение истории измерений не завершает задание.
+  Сверка запрашивает итог шлюза; снимает активность results inbox.
+  OTel: Tick / enqueue; метрики отставания и возраста активных работ.
+end note
+
+legend bottom
+Проектируемые элементы; реализации нет. Голубые — внутри компонента; серые — соседи.
+Сплошная стрелка — вызов / зависимость; пунктир — использование данных или связь с соседним компонентом.
+endlegend
+@enduml

@@ -18,7 +18,7 @@ Container(users, "Users", "gRPC/TLS", "Обмен пользовательско
 Container(devices, "Devices", "gRPC/TLS", "Права; идемпотентный приём команд")
 ContainerDb(cache, "Общий кэш прав", "Read-only для Scenarios", "Положительные разрешения; Devices — писатель")
 ContainerQueue(broker, "RabbitMQ internal", "AMQP", "Собственная очередь измерений Scenarios")
-Boundary(service, "Scenarios") {
+Boundary(service, "Scenarios · Python / gRPC Python") {
   Container_Boundary(api, "Scenarios API") {
     Component(auth, "Контекст и доступ", "gRPC handlers / clients", "Подписанный контекст; права владельца")
     Component(rules, "Управление правилами", "Доменный компонент", "Версии, включение, редактирование; та же строка координации")
@@ -53,8 +53,9 @@ note bottom of evaluator
   Далее false → true; перезапуск не новая активация.
   Нет свежести: нет нового действия, прежнее состояние сохранено.
   Сеть и отправка команды выполняются вне SQL-блокировки.
+  Детализация правила: to-be-code-scenarios-rule.
 end note
 
 SHOW_LEGEND()
-footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+footer Проектируемая архитектура · общая PostgreSQL · все роли: OTel, метрики и структурированные логи
 @enduml

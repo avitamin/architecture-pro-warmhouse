@@ -18,7 +18,7 @@ Container(callers, "Telemetry / Video / Scenarios", "gRPC/TLS", "Права; к�
 Container(ig, "Шлюз интеграций", "Контракт привязки", "Подтверждение от аутентифицированного прибора; доставка уточняется")
 ContainerQueue(broker, "RabbitMQ internal", "AMQP", "Задания команд / очередь результатов")
 ContainerDb(cache, "Общий кэш прав", "Продукт не выбран", "Только положительные записи с TTL")
-Boundary(service, "Devices") {
+Boundary(service, "Devices · Kotlin / Spring Boot") {
   Container_Boundary(api, "Devices API") {
     Component(auth, "Вход и проверка контекста", "gRPC handlers", "Служебный токен; пользовательский токен либо разрешённый фоновый контракт")
     Component(registry, "Реестр и возможности", "Доменный компонент", "Регистрация; параметры интеграции")
@@ -57,9 +57,10 @@ note bottom of commands
   Повтор с тем же содержимым возвращает прежний результат.
   Иной payload при том же command_id — конфликт.
   «Принята» после commit не означает «выполнена».
+  Детализация приёма: to-be-code-devices-command.
   Исход отмены до исполнения поступает с версией от шлюза.
 end note
 
 SHOW_LEGEND()
-footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+footer Проектируемая архитектура · общая PostgreSQL · все роли: OTel, метрики и структурированные логи
 @enduml

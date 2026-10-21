@@ -18,27 +18,27 @@ System_Ext(equipment, "MQTT-устройства", "Исходящее подк�
 System_Ext(camera, "Совместимая камера", "WebRTC и доступная сигнализация партнёра")
 System_Boundary(platform, "Платформа умного дома") {
   Container(web, "Веб-приложение", "Браузер", "Показания, управление, правила, live-видео")
-  Container(edge, "API Gateway", "HTTPS JSON ↔ gRPC/TLS", "Проверка сессии через Users; маршрутизация запросов и ответов")
-  Container(users, "Users API", "gRPC/TLS", "Сессии; выпуск и обмен подписанного пользовательского токена")
-  Boundary(devices, "Сервис устройств · своя схема PG") {
+  Container(edge, "API Gateway", "PHP / Laravel; HTTP ↔ gRPC", "Проверка сессии через Users; маршрутизация запросов и ответов")
+  Container(users, "Users API", "C# / ASP.NET Core gRPC", "Сессии; выпуск и обмен подписанного пользовательского токена")
+  Boundary(devices, "Devices · Kotlin / Spring Boot · своя схема PG") {
     Container(dapi, "Devices API", "gRPC/TLS", "Реестр, привязка, права, приём команд")
     Container(dresults, "Результаты команд", "AMQP worker", "Атомарное применение версии")
     Container(drelay, "Devices relay", "Outbox process", "Задания команд")
   }
-  Boundary(telemetry, "Сервис телеметрии · своя схема PG") {
+  Boundary(telemetry, "Telemetry · Go / gRPC-Go · своя схема PG") {
     Container(tapi, "Telemetry API", "gRPC/TLS", "История и временные отметки")
     Container(tplan, "Планирование и сверка", "Фоновые роли", "Конфигурация, расписание, зависшие опросы")
     Container(thistory, "История", "AMQP worker", "Сохранение измерений")
     Container(tresults, "Результаты опросов", "AMQP worker", "Inbox, завершение и расписание")
     Container(trelay, "Telemetry relay", "Outbox process", "Задания опросов")
   }
-  Boundary(scenarios, "Сервис сценариев · своя схема PG") {
+  Boundary(scenarios, "Scenarios · Python / gRPC Python · своя схема PG") {
     Container(sapi, "Scenarios API", "gRPC/TLS", "Правила и версии")
     Container(srules, "Обработка правил", "AMQP worker", "Inbox, состояние, срабатывания")
     Container(srelay, "Scenarios relay", "Outbox process / gRPC", "Команды с постоянным command_id")
   }
-  Container(video, "Video API", "gRPC/TLS", "Доступ и live-сеанс; клиент сигнализации; без медиабайтов")
-  Boundary(integration, "Шлюз интеграций · общая кодовая база · своя схема PG") {
+  Container(video, "Video API", "TypeScript / NestJS gRPC", "Доступ и live-сеанс; клиент сигнализации; без медиабайтов")
+  Boundary(integration, "Integration Gateway · Elixir/OTP · общая кодовая база · своя схема PG") {
     Container(gapi, "Gateway API", "gRPC/TLS", "Сверка заданий; адаптация сигнализации")
     Container(ginput, "Приёмники", "AMQP workers", "Команды internal; сырые ответы devices → PostgreSQL")
     Container(gpoll, "Пул опросов", "Worker processes", "Опрос; ACK задания после итога")
@@ -89,11 +89,15 @@ note bottom of pg
   Связи от границ суммируют SQL/AMQP ролей; детали — на Components.
   SQL каждой роли — только к своей схеме.
   Сырые ответы из общей очереди devices читают AMQP-приёмники шлюза.
-  Telemetry, Scenarios, Video: при miss/отказе кэша вызывают Devices,
+  Пользовательские API Telemetry, Scenarios, Video при miss/отказе кэша вызывают Devices,
   предварительно обменивая контекст в Users на токен для Devices.
+  Фон Scenarios: кэш либо Devices по служебному контракту и сохранённому владельцу;
+  обмен браузерного контекста в фоне не используется.
   Роли не означают число реплик. Video: постоянное хранилище не выбрано.
   Синхронные gRPC: TLS и отдельные служебные токены направленных связей.
   Фоновая автоматизация не хранит браузерный токен.
+  OTel / Collector / Prometheus / Loki: отдельный эксплуатационный срез
+  to-be-containers-observability; охватывает все роли и инфраструктуру.
 end note
 
 SHOW_LEGEND()

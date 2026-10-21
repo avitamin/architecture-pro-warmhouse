@@ -19,7 +19,7 @@ Container(devices, "Devices", "gRPC/TLS", "Конфигурация и исто�
 Container(gateway, "Gateway API", "gRPC/TLS", "Состояние опроса / повторная публикация")
 ContainerDb(cache, "Общий кэш прав", "Read-only для Telemetry", "Положительное разрешение с действующим TTL")
 ContainerQueue(broker, "RabbitMQ internal", "AMQP", "Отдельно: задания, измерения, результаты опросов")
-Boundary(service, "Telemetry") {
+Boundary(service, "Telemetry · Go / gRPC-Go") {
   Container_Boundary(api, "Telemetry API") {
     Component(access, "Проверка контекста и доступа", "gRPC middleware / client", "Сессия проверена Gateway; токен проверяется здесь; кэш или Devices")
     Component(query, "Чтение истории и показаний", "Query component", "Сохранённые значения и временные отметки; без опроса прибора в запросе экрана")
@@ -61,11 +61,12 @@ note bottom of reconcile
   Нет итога / шлюз недоступен: активность не снимается.
   Восстановленный итог приходит через очередь и inbox.
   История не управляет завершением задания.
+  Детализация планировщика: to-be-code-telemetry-scheduler.
   Фоновые роли не используют браузерную сессию.
 end note
 
 Lay_D(users, cache)
 Lay_D(cache, devices)
 SHOW_LEGEND()
-footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+footer Проектируемая архитектура · общая PostgreSQL · все роли: OTel, метрики и структурированные логи
 @enduml

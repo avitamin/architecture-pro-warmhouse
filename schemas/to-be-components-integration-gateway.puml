@@ -18,7 +18,7 @@ ContainerQueue(internal, "RabbitMQ internal", "AMQP", "Раздельные за
 ContainerQueue(raw, "RabbitMQ devices", "AMQP + MQTT plugin", "Общая очередь сырых ответов; MQTT-каналы приборов")
 System_Ext(device, "MQTT-оборудование", "Исходящий MQTT 5 / TLS")
 System_Ext(camera, "Камера", "Существующая сигнализация партнёра")
-Boundary(service, "Шлюз интеграций · одна кодовая база") {
+Boundary(service, "Integration Gateway · Elixir/OTP · одна кодовая база") {
   Container_Boundary(api, "Gateway API") {
     Component(status, "Состояние заданий", "gRPC handlers", "Служебный токен; поиск сохранённого итога и повторная публикация")
     Component(video, "Адаптер сигнализации", "gRPC / partner adapter", "Преобразование сообщений сеанса; без видеобайтов")
@@ -73,8 +73,12 @@ note bottom of recover
   Lease не отменяет физическое действие и не снимает занятость.
   Старый исполнитель не перезаписывает новый итог.
   Приём ответа сам по себе не выдаёт право завершить задание.
+  Детализация координатора: to-be-code-gateway-coordinator.
+  Путь подтверждения привязки здесь не детализирован:
+  шлюз принимает подтверждение аутентифицированного прибора
+  и передаёт в Devices; контракт доставки ещё уточняется.
 end note
 
 SHOW_LEGEND()
-footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+footer Проектируемая архитектура · общая PostgreSQL · все роли: OTel, метрики и структурированные логи
 @enduml

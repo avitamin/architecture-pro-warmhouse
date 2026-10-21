@@ -21,7 +21,7 @@ ContainerDb(cache, "Общий кэш прав", "Read-only для Video", "По
 Container(gateway, "Gateway API и адаптер камеры", "gRPC/TLS", "Существующий протокол сигнализации партнёра")
 System_Ext(camera, "Совместимая камера", "WebRTC, совместимый кодек и доступная сигнализация")
 Container(turn, "TURN / STUN", "Инфраструктура", "TURN ретранслирует; STUN помогает установить соединение")
-Boundary(service, "Video") {
+Boundary(service, "Video · TypeScript / NestJS gRPC") {
   Container_Boundary(api, "Video API") {
     Component(entry, "API просмотра", "gRPC handlers", "Контекст пользователя и служебная аутентификация")
     Component(access, "Проверка доступа к камере", "Authorization client", "Кэш либо Devices; запрет обхода по одному camera_id")
@@ -50,5 +50,5 @@ note bottom of session
 end note
 
 SHOW_LEGEND()
-footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+footer Проектируемая архитектура · хранилище Video не выбрано · все роли: OTel, метрики и структурированные логи
 @enduml

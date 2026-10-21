@@ -15,7 +15,7 @@ end title
 
 Container(edge, "API Gateway", "gRPC/TLS", "Проверяет каждую защищённую сессию; без положительного кэша")
 Container(callers, "Telemetry / Video / Scenarios", "gRPC/TLS", "Последующий синхронный пользовательский вызов")
-Boundary(service, "Users") {
+Boundary(service, "Users · C# / ASP.NET Core gRPC") {
   Container_Boundary(api, "Users API") {
     Component(entry, "API и служебная аутентификация", "gRPC handlers", "Разрешённый caller и метод")
     Component(accounts, "Учётные записи", "Доменный компонент", "Первоначальный способ входа ещё не выбран")
@@ -45,5 +45,5 @@ note bottom of issuer
 end note
 
 SHOW_LEGEND()
-footer Проектируемая архитектура · не реализованные сервисы · одна общая PostgreSQL
+footer Проектируемая архитектура · общая PostgreSQL · все роли: OTel, метрики и структурированные логи
 @enduml
